@@ -20,4 +20,3 @@ grow_vertical = 2
 scroll_offset = Vector2(-40, -40)
 script = ExtResource("1_ig7tw")
 test_json_file = "res://test_files/Cammymoop Games.cammy-worldgen-test/Server/HytaleGenerator/Biomes/Basic_.json"
-verbose = true
