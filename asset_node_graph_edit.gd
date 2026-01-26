@@ -1,4 +1,5 @@
 extends GraphEdit
+class_name AssetNodeGraphEdit
 
 @export_file_path("*.json") var test_json_file: String = ""
 
@@ -12,6 +13,8 @@ var hy_workspace_id: String = ""
 var all_asset_nodes: Array[HyAssetNode] = []
 var floating_tree_roots: Array[HyAssetNode] = []
 var root_node: HyAssetNode = null
+
+@onready var special_gn_factory: SpecialGNFactory = $SpecialGNFactory
 
 var asset_node_meta: Dictionary[String, Dictionary] = {}
 
@@ -59,12 +62,17 @@ var temp_x_elements: = 10
 
 var copied_nodes: Array[GraphNode] = []
 
+var special_handling_types: Array[String] = [
+    "ManualCurve",
+]
+
 func _ready() -> void:
     right_disconnects = true
     #add_valid_left_disconnect_type(1)
     
     connection_request.connect(_connection_request)
     disconnection_request.connect(_disconnection_request)
+    delete_nodes_request.connect(_delete_request)
     
     for extra_type_name in more_type_names.keys():
         type_names[more_type_names[extra_type_name]] = extra_type_name
@@ -92,6 +100,36 @@ func _connection_request(from_gn_name: StringName, from_port: int, to_gn_name: S
 func _disconnection_request(from_gn_name: StringName, from_port: int, to_gn_name: StringName, to_port: int) -> void:
     #prints("Disconnection request:", from_gn_name, from_port, to_gn_name, to_port)
     disconnect_node(from_gn_name, from_port, to_gn_name, to_port)
+
+func _delete_request(delete_gn_names: Array[StringName]) -> void:
+    for gn_name in delete_gn_names:
+        var gn: GraphNode = get_node(NodePath(gn_name))
+        if gn:
+            if gn.get_meta("hy_asset_node_id", ""):
+                var an_id: String = gn.get_meta("hy_asset_node_id")
+                var asset_node: HyAssetNode = an_lookup.get(an_id, null)
+                if asset_node:
+                    asset_node.queue_free()
+                an_lookup.erase(an_id)
+                gn_lookup.erase(an_id)
+            gn.queue_free()
+
+func get_unique_id(id_prefix: String = "") -> String:
+    return "%s-%s" % [id_prefix, Util.unique_id_string()]
+
+func get_new_asset_node(asset_node_type: String, id_prefix: String = "") -> HyAssetNode:
+    if id_prefix == "" and asset_node_type and asset_node_type != "Unknown":
+        id_prefix = schema.get_id_prefix_for_node_type(asset_node_type)
+    elif id_prefix == "":
+        print_debug("New asset node: No ID prefix provided, and asset node type is unknown or empty")
+        return null
+
+    var new_asset_node: = HyAssetNode.new()
+    new_asset_node.an_node_id = get_unique_id(id_prefix)
+    new_asset_node.an_type = asset_node_type
+    all_asset_nodes.append(new_asset_node)
+    an_lookup[new_asset_node.an_node_id] = new_asset_node
+    return new_asset_node
 
 func get_selected_gns() -> Array[GraphNode]:
     var selected_gns: Array[GraphNode] = []
@@ -159,13 +197,15 @@ func parse_asset_node_shallow(asset_node_data: Dictionary, output_value_type: St
     if known_node_type != "":
         asset_node.an_type = known_node_type
     elif output_value_type != "ROOT":
-        asset_node.an_type = schema.resolve_asset_node_type(asset_node_data.get("Type", "NO_TYPE_KEY"), output_value_type)
+        asset_node.an_type = schema.resolve_asset_node_type(asset_node_data.get("Type", "NO_TYPE_KEY"), output_value_type, asset_node.an_node_id)
     
     var type_schema: = {}
     if asset_node.an_type and asset_node.an_type != "Unknown":
         type_schema = schema.node_schema[asset_node.an_type]
 
     asset_node.an_name = schema.get_node_type_default_name(asset_node.an_type)
+    if asset_node_meta and asset_node_meta.has(asset_node.an_node_id) and asset_node_meta[asset_node.an_node_id].has("$Title"):
+        asset_node.an_name = asset_node_meta[asset_node.an_node_id]["$Title"]
     asset_node.raw_tree_data = asset_node_data.duplicate(true)
     
     var connections_schema: Dictionary = type_schema.get("connections", {})
@@ -215,6 +255,7 @@ func _inner_parse_asset_node_deep(asset_node_data: Dictionary, output_value_type
             var sub_parse_result: = _inner_parse_asset_node_deep(conn_nodes_data[conn_node_idx], conn_value_type)
             all_nodes.append_array(sub_parse_result["all_nodes"])
             parsed_node.set_connection(conn, conn_node_idx, sub_parse_result["base"])
+        parsed_node.set_connection_count(conn, conn_nodes_data.size())
 
     parsed_node.has_inner_asset_nodes = true
     
@@ -248,7 +289,7 @@ func parse_root_asset_node(base_node: Dictionary) -> void:
     if hy_workspace_id == "NONE":
         print_debug("No workspace ID found in root node or editor metadata")
     else:
-        root_node_type = schema.resolve_asset_node_type(base_node.get("Type", "NO_TYPE_KEY"), "ROOT|%s" % hy_workspace_id)
+        root_node_type = schema.resolve_asset_node_type(base_node.get("Type", "NO_TYPE_KEY"), "ROOT|%s" % hy_workspace_id, base_node.get("$NodeId", ""))
         print("Root node type: %s" % root_node_type)
 
     var parse_result: = parse_asset_node_deep(base_node, "", root_node_type)
@@ -287,33 +328,25 @@ func make_graph_stuff() -> void:
         print_debug("Make graph: Not loaded or no root node")
         return
     
-    for asset_node in all_asset_nodes:
-        var graph_node: = new_graph_node(asset_node)
-        if not use_json_positions:
-            graph_node.position_offset = Vector2(0, -500)
-        add_child(graph_node)
-        if graph_node.size.x < gn_min_width:
-            graph_node.size.x = gn_min_width
+    var all_root_nodes: Array[HyAssetNode] = [root_node]
+    all_root_nodes.append_array(floating_tree_roots)
     
-    if use_json_positions:
-        connect_children(root_node.an_node_id)
-    else:
-        move_and_connect_children(root_node.an_node_id, Vector2(0, 100))
-    
-    for floating_root in floating_tree_roots:
-        var graph_node: GraphNode = gn_lookup.get(floating_root.an_node_id, null)
-        if not graph_node:
-            continue
-        temp_pos.x += temp_x_sep
-        if temp_pos.x >= temp_x_sep * temp_x_elements:
-            temp_pos.x = temp_origin.x
-            temp_pos.y += temp_y_sep
-
+    var base_tree_pos: = Vector2(0, 100)
+    for tree_root_node in all_root_nodes:
+        var new_graph_nodes: Array[CustomGraphNode] = new_graph_nodes_for_tree(tree_root_node)
+        for new_gn in new_graph_nodes:
+            if not use_json_positions:
+                new_gn.position_offset = Vector2(0, -500)
+            add_child(new_gn)
+            if new_gn.size.x < gn_min_width:
+                new_gn.size.x = gn_min_width
+        
         if use_json_positions:
-            connect_children(floating_root.an_node_id)
+            connect_children(tree_root_node.an_node_id)
         else:
-            graph_node.position_offset = temp_pos
-
+            var last_y: int = move_and_connect_children(tree_root_node.an_node_id, base_tree_pos)
+            base_tree_pos.y = last_y + 40
+    
 func connect_children(asset_node_id: String) -> void:
     var graph_node: = gn_lookup[asset_node_id]
     var asset_node: = an_lookup[asset_node_id]
@@ -358,73 +391,90 @@ func move_and_connect_children(asset_node_id: String, pos: Vector2) -> int:
     
     return int(child_pos.y)
 
-func new_graph_node(asset_node: HyAssetNode) -> CustomGraphNode:
-    var graph_node: = CustomGraphNode.new()
+func new_graph_nodes_for_tree(tree_root_node: HyAssetNode) -> Array[CustomGraphNode]:
+    return _recursive_new_graph_nodes(tree_root_node, tree_root_node)
+
+func _recursive_new_graph_nodes(at_asset_node: HyAssetNode, root_asset_node: HyAssetNode) -> Array[CustomGraphNode]:
+    var new_graph_nodes: Array[CustomGraphNode] = []
+    new_graph_nodes.append(new_graph_node(at_asset_node, root_asset_node))
+    for conn_name in at_asset_node.connection_list:
+        for connected_asset_node in at_asset_node.get_all_connected_nodes(conn_name):
+            new_graph_nodes.append_array(_recursive_new_graph_nodes(connected_asset_node, root_asset_node))
+    return new_graph_nodes
+
+
+func new_graph_node(asset_node: HyAssetNode, root_asset_node: HyAssetNode) -> CustomGraphNode:
+    var graph_node: CustomGraphNode = null
+    var is_special: = false
+    if special_gn_factory.special_handling_types.has(asset_node.an_type):
+        is_special = true
+        graph_node = special_gn_factory.make_special_gn(asset_node, root_asset_node)
+    else:
+        graph_node = CustomGraphNode.new()
+
     graph_node.set_meta("hy_asset_node_id", asset_node.an_node_id)
     gn_lookup[asset_node.an_node_id] = graph_node
     
     graph_node.resizable = true
     graph_node.ignore_invalid_connection_type = true
 
-    # Get title from metadata if available
-    var node_meta = asset_node_meta.get(asset_node.an_node_id, {})
-    if node_meta.has("$Title"):
-        asset_node.an_name = node_meta["$Title"]
-    
     graph_node.title = asset_node.an_name
     
-    var num_inputs: = 1
-    if asset_node.an_type in no_left_types:
-        num_inputs = 0
-    
-    var connection_names: = asset_node.connections.keys()
-    var num_outputs: = connection_names.size()
-    
-    var setting_names: = asset_node.settings.keys()
-    var num_settings: = setting_names.size()
-    
-    var first_setting_slot: = maxi(num_inputs, num_outputs)
-    
-    for i in maxi(num_inputs, num_outputs) + num_settings:
-        if i >= first_setting_slot:
-            var slot_node: = HBoxContainer.new()
-            slot_node.name = "Slot%d" % i
-            var s_name: = Label.new()
-            s_name.name = "SettingName"
-            s_name.text = "%s:" % setting_names[i - first_setting_slot]
-            s_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-            slot_node.add_child(s_name, true)
+    if is_special:
+        pass
+    else:
+        var num_inputs: = 1
+        if asset_node.an_type in no_left_types:
+            num_inputs = 0
+        
+        var connection_names: = asset_node.connections.keys()
+        var num_outputs: = connection_names.size()
+        
+        var setting_names: = asset_node.settings.keys()
+        var num_settings: = setting_names.size()
+        
+        var first_setting_slot: = maxi(num_inputs, num_outputs)
+        
+        for i in maxi(num_inputs, num_outputs) + num_settings:
+            if i >= first_setting_slot:
+                var slot_node: = HBoxContainer.new()
+                slot_node.name = "Slot%d" % i
+                var s_name: = Label.new()
+                s_name.name = "SettingName"
+                s_name.text = "%s:" % setting_names[i - first_setting_slot]
+                s_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+                slot_node.add_child(s_name, true)
 
-            var s_edit: Control
-            var setting_value: Variant = asset_node.settings[setting_names[i - first_setting_slot]]
-            var setting_type: int = typeof(setting_value)
-            if setting_type == TYPE_BOOL:
-                s_edit = CheckBox.new()
-                s_edit.name = "SettingEdit"
-                s_edit.button_pressed = setting_value
+                var s_edit: Control
+                var setting_value: Variant = asset_node.settings[setting_names[i - first_setting_slot]]
+                var setting_type: int = typeof(setting_value)
+                if setting_type == TYPE_BOOL:
+                    s_edit = CheckBox.new()
+                    s_edit.name = "SettingEdit"
+                    s_edit.button_pressed = setting_value
+                else:
+                    s_edit = LineEdit.new()
+                    s_edit.name = "SettingEdit"
+                    s_edit.text = str(setting_value)
+                    s_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+                    s_name.size_flags_horizontal = Control.SIZE_FILL
+                    if setting_type == TYPE_FLOAT or setting_type == TYPE_INT:
+                        s_edit.alignment = HORIZONTAL_ALIGNMENT_RIGHT
+                slot_node.add_child(s_edit, true)
+                
+                graph_node.add_child(slot_node, true)
             else:
-                s_edit = LineEdit.new()
-                s_edit.name = "SettingEdit"
-                s_edit.text = str(setting_value)
-                s_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-                s_name.size_flags_horizontal = Control.SIZE_FILL
-                if setting_type == TYPE_FLOAT or setting_type == TYPE_INT:
-                    s_edit.alignment = HORIZONTAL_ALIGNMENT_RIGHT
-            slot_node.add_child(s_edit, true)
-            
-            graph_node.add_child(slot_node, true)
-        else:
-            var slot_node: = Label.new()
-            slot_node.name = "Slot%d" % i
-            graph_node.add_child(slot_node, true)
-            if i < num_inputs:
-                graph_node.set_slot_enabled_left(i, true)
-                graph_node.set_slot_type_left(i, type_id_lookup["Single"])
-            if i < num_outputs:
-                graph_node.set_slot_enabled_right(i, true)
-                graph_node.set_slot_type_right(i, type_id_lookup["Single"])
-                slot_node.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-                slot_node.text = connection_names[i]
+                var slot_node: = Label.new()
+                slot_node.name = "Slot%d" % i
+                graph_node.add_child(slot_node, true)
+                if i < num_inputs:
+                    graph_node.set_slot_enabled_left(i, true)
+                    graph_node.set_slot_type_left(i, type_id_lookup["Single"])
+                if i < num_outputs:
+                    graph_node.set_slot_enabled_right(i, true)
+                    graph_node.set_slot_type_right(i, type_id_lookup["Single"])
+                    slot_node.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+                    slot_node.text = connection_names[i]
     
     if use_json_positions:
         var meta_pos: = get_node_position_from_meta(asset_node.an_node_id) * json_positions_scale

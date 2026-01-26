@@ -104,7 +104,7 @@ func validate_json_file(file_path: String):
 	if workspace_id == "":
 		add_error("No workspace ID found in root node or editor metadata in file '%s'" % file_path)
 
-	var root_type = schema.resolve_asset_node_type(root_data.get("Type", "NO_TYPE_KEY"), "ROOT|%s" % workspace_id)
+	var root_type = schema.resolve_asset_node_type(root_data.get("Type", "NO_TYPE_KEY"), "ROOT|%s" % workspace_id, root_data.get("$NodeId", ""))
 	validate_node(root_data, root_type, "NO_OUTPUT_TYPE", file_path)
 	
 	# Walk all nodes recursively, tracking their parent connection types
@@ -155,6 +155,11 @@ func validate_node(node: Dictionary, node_type: String, expected_value_type: Str
 	
 	if node_type == "Unknown":
 		add_error("Cannot infer type for node '%s' in file '%s' with expected value type '%s'" % [node_id, file_path, expected_value_type])
+	else:
+		var id_prefix = schema.get_id_prefix_for_node_type(node_type)
+		if not node_id.begins_with("%s-" % id_prefix):
+			add_error("Node of type '%s' has incorrect ID prefix: expected '%s-', id was: '%s'" % [node_type, id_prefix, node_id])
+			add_error("<<%s::%s>>" % [node_type, node_id.substr(0, node_id.find("-"))])
 	
 	# Get the node schema
 	if not schema.node_schema.has(node_type):

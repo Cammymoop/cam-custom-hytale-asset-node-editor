@@ -1,6 +1,61 @@
 extends Resource
 class_name AssetNodesSchema
 
+var full_id_prefix_lookup: Dictionary[String, String] = {}
+
+func load_full_id_prefix_lookup() -> void:
+    for node_type in node_types:
+        full_id_prefix_lookup[get_id_prefix_for_node_type(node_type)] = node_type
+
+func get_node_type_default_name(node_type: String) -> String:
+    if node_type == "Unknown":
+        return "[Unknown]"
+    if not node_schema.has(node_type):
+        return node_type
+    return node_schema[node_type]["display_name"]
+
+func resolve_asset_node_type(type_key: String, output_value_type: String, node_id: String = "") -> String:
+    if output_value_type == "":
+        if node_id == "":
+            print_debug("No output type provided, and no node ID provided, cannot infer type")
+            return "Unknown"
+        else:
+            return _unknown_output_type_inference(node_id)
+    if output_value_type.begins_with("ROOT"):
+        var parts: = output_value_type.split("|")
+        if parts.size() != 2:
+            print_debug("Invalid root node type key: %s" % output_value_type)
+            return "Unknown"
+        if parts[1] not in workspace_root_types:
+            print_debug("Invalid root node type lookup (workspace id): %s" % parts[1])
+            return "Unknown"
+        return workspace_root_types[parts[1]]
+    else:
+        if type_key == "NO_TYPE_KEY":
+            type_key = ""
+        var type_inference_key: = "%s|%s" % [output_value_type, type_key]
+        if not node_types.has(type_inference_key):
+            print_debug("Type inference key not found: %s" % type_inference_key)
+            return "Unknown"
+        return node_types[type_inference_key]
+
+## Needed for floating node roots in the current format
+func _unknown_output_type_inference(node_id: String) -> String:
+    if not full_id_prefix_lookup:
+        load_full_id_prefix_lookup()
+    var id_prefix: = node_id.substr(0, node_id.find("-"))
+    var node_type: String = full_id_prefix_lookup.get(id_prefix, "Unknown")
+    if node_type == "Unknown":
+        print_debug("Unknown node type for ID prefix: %s" % id_prefix)
+    return node_type
+
+func get_id_prefix_for_node_type(node_type: String) -> String:
+    if node_type == "Unknown" or node_type not in node_schema:
+        print_debug("Unknown node type, no ID prefix")
+        return ""
+
+    return node_schema[node_type].get("id_prefix_override", node_type)
+
 @export var value_types: Array[String] = [
     "Density",
     "Curve",
@@ -32,7 +87,8 @@ class_name AssetNodesSchema
     "Layer",
     "WeightedPath",
     "WeightedProp",
-    "DelimiterAssignments",
+    "SMDelimiterAssignments",
+    "FFDelimiterAssignments",
     "DelimiterPattern",
     "CaseSwitch",
     "KeyMultiMix",
@@ -203,7 +259,8 @@ class_name AssetNodesSchema
     "CaseSwitch|": "CaseSwitch",
     "KeyMultiMix|": "KeyMultiMix",
     "WeightedAssignment|": "WeightedAssignment",
-    "DelimiterAssignments|": "DelimiterAssignments",
+    "SMDelimiterAssignments|": "SMDelimiterAssignments",
+    "FFDelimiterAssignments|": "FFDelimiterAssignments",
     "DelimiterPattern|": "DelimiterPattern",
     "WeightedPath|": "WeightedPath",
     "WeightedClusterProp|": "WeightedClusterProp",
@@ -257,6 +314,7 @@ class_name AssetNodesSchema
 
 @export var node_schema: Dictionary[String, Dictionary] = {
     "BiomeRoot": {
+		"id_prefix_override": "Biome",
         "display_name": "Biome",
         "output_value_type": "__ROOT_ONLY",
         "settings": {
@@ -273,6 +331,7 @@ class_name AssetNodesSchema
     
     # Density nodes
     "ConstantDensity": {
+		"id_prefix_override": "ConstantDensityNode",
         "display_name": "Constant Density",
         "output_value_type": "Density",
         "settings": {
@@ -282,6 +341,7 @@ class_name AssetNodesSchema
         }
     },
     "SumDensity": {
+		"id_prefix_override": "SumDensityNode",
         "display_name": "Sum Density",
         "output_value_type": "Density",
         "settings": {
@@ -293,6 +353,7 @@ class_name AssetNodesSchema
         }
     },
     "MaxDensity": {
+		"id_prefix_override": "MaxDensityNode",
         "display_name": "Max Density",
         "output_value_type": "Density",
         "settings": {
@@ -303,6 +364,7 @@ class_name AssetNodesSchema
         }
     },
     "MultiplierDensity": {
+		"id_prefix_override": "MultiplierDensityNode",
         "display_name": "Multiplier Density",
         "output_value_type": "Density",
         "settings": {
@@ -314,6 +376,7 @@ class_name AssetNodesSchema
         }
     },
     "SimplexNoise2DDensity": {
+		"id_prefix_override": "SimplexNoise2DDensityNode",
         "display_name": "Simplex Noise 2D Density",
         "output_value_type": "Density",
         "settings": {
@@ -327,6 +390,7 @@ class_name AssetNodesSchema
         }
     },
     "SimplexNoise3DDensity": {
+		"id_prefix_override": "SimplexNoise3DDensityNode",
         "display_name": "Simplex Noise 3D Density",
         "output_value_type": "Density",
         "settings": {
@@ -340,6 +404,7 @@ class_name AssetNodesSchema
         }
     },
     "CurveMapperDensity": {
+		"id_prefix_override": "CurveMapper.Density",
         "display_name": "Curve Mapper Density",
         "output_value_type": "Density",
         "settings": {
@@ -351,6 +416,7 @@ class_name AssetNodesSchema
         }
     },
     "BaseHeightDensity": {
+		"id_prefix_override": "BaseHeight.Density",
         "display_name": "Base Height Density",
         "output_value_type": "Density",
         "settings": {
@@ -361,6 +427,7 @@ class_name AssetNodesSchema
     },
     # Positions Cell Noise Density
     "PositionsCellNoiseDensity": {
+		"id_prefix_override": "PositionsCellNoiseDensityNode",
         "display_name": "Cell Noise Density",
         "output_value_type": "Density",
         "settings": {
@@ -374,6 +441,7 @@ class_name AssetNodesSchema
         }
     },
     "VectorWarpDensity": {
+		"id_prefix_override": "VectorWarp.Density",
         "display_name": "Vector Warp Density",
         "output_value_type": "Density",
         "settings": {
@@ -386,6 +454,7 @@ class_name AssetNodesSchema
         }
     },
     "AnchorDensity": {
+		"id_prefix_override": "Anchor.Density",
         "display_name": "Anchor Density",
         "output_value_type": "Density",
         "settings": {
@@ -397,6 +466,7 @@ class_name AssetNodesSchema
         }
     },
     "AxisDensity": {
+		"id_prefix_override": "Axis.Density",
         "display_name": "Axis Density",
         "output_value_type": "Density",
         "settings": {
@@ -409,6 +479,7 @@ class_name AssetNodesSchema
         }
     },
     "YValueDensity": {
+		"id_prefix_override": "YValue.Density",
         "display_name": "Y Value Density",
         "output_value_type": "Density",
         "settings": {
@@ -416,6 +487,7 @@ class_name AssetNodesSchema
         }
     },
     "XValueDensity": {
+		"id_prefix_override": "XValue.Density",
         "display_name": "X Value Density",
         "output_value_type": "Density",
         "settings": {
@@ -423,6 +495,7 @@ class_name AssetNodesSchema
         }
     },
     "YOverrideDensity": {
+		"id_prefix_override": "YOverride.Density",
         "display_name": "Y Override Density",
         "output_value_type": "Density",
         "settings": {
@@ -434,6 +507,7 @@ class_name AssetNodesSchema
         }
     },
     "XOverrideDensity": {
+		"id_prefix_override": "XOverride.Density",
         "display_name": "X Override Density",
         "output_value_type": "Density",
         "settings": {
@@ -445,6 +519,7 @@ class_name AssetNodesSchema
         }
     },
     "ZOverrideDensity": {
+		"id_prefix_override": "ZOverride.Density",
         "display_name": "Z Override Density",
         "output_value_type": "Density",
         "settings": {
@@ -456,6 +531,7 @@ class_name AssetNodesSchema
         }
     },
     "InverterDensity": {
+		"id_prefix_override": "InverterDensityNode",
         "display_name": "Inverter Density",
         "output_value_type": "Density",
         "settings": {
@@ -466,6 +542,7 @@ class_name AssetNodesSchema
         }
     },
     "NormalizerDensity": {
+		"id_prefix_override": "NormalizerDensityNode",
         "display_name": "Normalizer Density",
         "output_value_type": "Density",
         "settings": {
@@ -481,6 +558,7 @@ class_name AssetNodesSchema
         }
     },
     "ImportedDensity": {
+		"id_prefix_override": "ImportedDensityNode",
         "display_name": "Imported Density",
         "output_value_type": "Density",
         "settings": {
@@ -489,6 +567,7 @@ class_name AssetNodesSchema
         }
     },
     "CacheDensity": {
+		"id_prefix_override": "Cache.Density",
         "display_name": "Cache Density",
         "output_value_type": "Density",
         "settings": {
@@ -501,6 +580,7 @@ class_name AssetNodesSchema
         }
     },
     "ShellDensity": {
+		"id_prefix_override": "Shell.Density",
         "display_name": "Shell Density",
         "output_value_type": "Density",
         "settings": {
@@ -514,6 +594,7 @@ class_name AssetNodesSchema
         }
     },
     "ClampDensity": {
+		"id_prefix_override": "ClampDensityNode",
         "display_name": "Clamp Density",
         "output_value_type": "Density",
         "settings": {
@@ -526,6 +607,7 @@ class_name AssetNodesSchema
         }
     },
     "RotatorDensity": {
+		"id_prefix_override": "Rotator.Density",
         "display_name": "Rotator Density",
         "output_value_type": "Density",
         "settings": {
@@ -538,6 +620,7 @@ class_name AssetNodesSchema
         }
     },
     "MinDensity": {
+		"id_prefix_override": "MinDensityNode",
         "display_name": "Min Density",
         "output_value_type": "Density",
         "settings": {
@@ -548,6 +631,7 @@ class_name AssetNodesSchema
         }
     },
     "CellNoise2DDensity": {
+		"id_prefix_override": "CellNoise2DDensityNode",
         "display_name": "Cell Noise 2D Density",
         "output_value_type": "Density",
         "settings": {
@@ -561,6 +645,7 @@ class_name AssetNodesSchema
         }
     },
     "CellNoise3DDensity": {
+		"id_prefix_override": "CellNoise3DDensityNode",
         "display_name": "Cell Noise 3D Density",
         "output_value_type": "Density",
         "settings": {
@@ -576,6 +661,7 @@ class_name AssetNodesSchema
         }
     },
     "SmoothMaxDensity": {
+		"id_prefix_override": "SmoothMaxDensityNode",
         "display_name": "Smooth Max Density",
         "output_value_type": "Density",
         "settings": {
@@ -587,6 +673,7 @@ class_name AssetNodesSchema
         }
     },
     "SmoothMinDensity": {
+		"id_prefix_override": "SmoothMinDensityNode",
         "display_name": "Smooth Min Density",
         "output_value_type": "Density",
         "settings": {
@@ -598,6 +685,7 @@ class_name AssetNodesSchema
         }
     },
     "FloorDensity": {
+		"id_prefix_override": "FloorDensityNode",
         "display_name": "Floor Density",
         "output_value_type": "Density",
         "settings": {
@@ -609,6 +697,7 @@ class_name AssetNodesSchema
         }
     },
     "CeilingDensity": {
+		"id_prefix_override": "CeilingDensityNode",
         "display_name": "Ceiling Density",
         "output_value_type": "Density",
         "settings": {
@@ -620,6 +709,7 @@ class_name AssetNodesSchema
         }
     },
     "SmoothClampDensity": {
+		"id_prefix_override": "SmoothClampDensityNode",
         "display_name": "Smooth Clamp Density",
         "output_value_type": "Density",
         "settings": {
@@ -633,6 +723,7 @@ class_name AssetNodesSchema
         }
     },
     "SmoothFloorDensity": {
+		"id_prefix_override": "SmoothFloorDensityNode",
         "display_name": "Smooth Floor Density",
         "output_value_type": "Density",
         "settings": {
@@ -645,6 +736,7 @@ class_name AssetNodesSchema
         }
     },
     "SmoothCeilingDensity": {
+		"id_prefix_override": "SmoothCeilingDensityNode",
         "display_name": "Smooth Ceiling Density",
         "output_value_type": "Density",
         "settings": {
@@ -657,6 +749,7 @@ class_name AssetNodesSchema
         }
     },
     "AbsDensity": {
+		"id_prefix_override": "AbsDensityNode",
         "display_name": "Abs Density",
         "output_value_type": "Density",
         "settings": {
@@ -667,6 +760,7 @@ class_name AssetNodesSchema
         }
     },
     "SqrtDensity": {
+		"id_prefix_override": "SqrtDensityNode",
         "display_name": "Sqrt Density",
         "output_value_type": "Density",
         "settings": {
@@ -677,6 +771,7 @@ class_name AssetNodesSchema
         }
     },
     "PowDensity": {
+		"id_prefix_override": "PowDensityNode",
         "display_name": "Pow Density",
         "output_value_type": "Density",
         "settings": {
@@ -688,6 +783,7 @@ class_name AssetNodesSchema
         }
     },
     "ScaleDensity": {
+		"id_prefix_override": "Scale.Density",
         "display_name": "Scale Density",
         "output_value_type": "Density",
         "settings": {
@@ -701,6 +797,7 @@ class_name AssetNodesSchema
         }
     },
     "SliderDensity": {
+		"id_prefix_override": "Slider.Density",
         "display_name": "Slider Density",
         "output_value_type": "Density",
         "settings": {
@@ -714,6 +811,7 @@ class_name AssetNodesSchema
         }
     },
     "GradientWarpDensity": {
+		"id_prefix_override": "GradientWarp.Density",
         "display_name": "Gradient Warp Density",
         "output_value_type": "Density",
         "settings": {
@@ -728,6 +826,7 @@ class_name AssetNodesSchema
         }
     },
     "FastGradientWarpDensity": {
+		"id_prefix_override": "FastGradientWarp.Density",
         "display_name": "Fast Gradient Warp Density",
         "output_value_type": "Density",
         "settings": {
@@ -744,6 +843,7 @@ class_name AssetNodesSchema
         }
     },
     "PositionsPinchDensity": {
+		"id_prefix_override": "PositionsPinch.Density",
         "display_name": "Positions Pinch Density",
         "output_value_type": "Density",
         "settings": {
@@ -761,6 +861,7 @@ class_name AssetNodesSchema
         }
     },
     "PositionsTwistDensity": {
+		"id_prefix_override": "PositionsTwist.Density",
         "display_name": "Positions Twist Density",
         "output_value_type": "Density",
         "settings": {
@@ -777,6 +878,7 @@ class_name AssetNodesSchema
         }
     },
     "EllipsoidDensity": {
+		"id_prefix_override": "Ellipsoid.Density",
         "display_name": "Ellipsoid Density",
         "output_value_type": "Density",
         "settings": {
@@ -790,6 +892,7 @@ class_name AssetNodesSchema
         }
     },
     "CuboidDensity": {
+		"id_prefix_override": "Cuboid.Density",
         "display_name": "Cuboid Density",
         "output_value_type": "Density",
         "settings": {
@@ -803,6 +906,7 @@ class_name AssetNodesSchema
         }
     },
     "CubeDensity": {
+		"id_prefix_override": "Cube.Density",
         "display_name": "Cube Density",
         "output_value_type": "Density",
         "settings": {
@@ -813,6 +917,7 @@ class_name AssetNodesSchema
         }
     },
     "CylinderDensity": {
+		"id_prefix_override": "Cylinder.Density",
         "display_name": "Cylinder Density",
         "output_value_type": "Density",
         "settings": {
@@ -826,6 +931,7 @@ class_name AssetNodesSchema
         }
     },
     "DistanceDensity": {
+		"id_prefix_override": "Distance.Density",
         "display_name": "Distance Density",
         "output_value_type": "Density",
         "settings": {
@@ -836,6 +942,7 @@ class_name AssetNodesSchema
         }
     },
     "PlaneDensity": {
+		"id_prefix_override": "Plane.Density",
         "display_name": "Plane Density",
         "output_value_type": "Density",
         "settings": {
@@ -848,6 +955,7 @@ class_name AssetNodesSchema
         }
     },
     "SwitchStateDensity": {
+		"id_prefix_override": "SwitchState.Density",
         "display_name": "Switch State Density",
         "output_value_type": "Density",
         "settings": {
@@ -859,6 +967,7 @@ class_name AssetNodesSchema
         }
     },
     "SwitchDensity": {
+		"id_prefix_override": "Switch.Density",
         "display_name": "Switch Density",
         "output_value_type": "Density",
         "settings": {
@@ -869,6 +978,7 @@ class_name AssetNodesSchema
         }
     },
     "MixDensity": {
+		"id_prefix_override": "Mix.Density",
         "display_name": "Mix Density",
         "output_value_type": "Density",
         "settings": {
@@ -879,6 +989,7 @@ class_name AssetNodesSchema
         }
     },
     "MultiMixDensity": {
+		"id_prefix_override": "MultiMix.Density",
         "display_name": "Multi Mix Density",
         "output_value_type": "Density",
         "connections": {
@@ -887,6 +998,7 @@ class_name AssetNodesSchema
         }
     },
     "ZValueDensity": {
+		"id_prefix_override": "ZValue.Density",
         "display_name": "Z Value Density",
         "output_value_type": "Density",
         "settings": {
@@ -894,6 +1006,7 @@ class_name AssetNodesSchema
         }
     },
     "AngleDensity": {
+		"id_prefix_override": "Angle.Density",
         "display_name": "Angle Density",
         "output_value_type": "Density",
         "settings": {
@@ -906,6 +1019,7 @@ class_name AssetNodesSchema
         }
     },
     "DistanceToBiomeEdgeDensity": {
+		"id_prefix_override": "DistanceToBiomeEdge.Density",
         "display_name": "Distance To Biome Edge Density",
         "output_value_type": "Density",
         "settings": {
@@ -913,6 +1027,7 @@ class_name AssetNodesSchema
         }
     },
     "TerrainDensity": {
+		"id_prefix_override": "Terrain.Density",
         "display_name": "Terrain Density (Reference)",
         "output_value_type": "Density",
         "settings": {
@@ -947,6 +1062,7 @@ class_name AssetNodesSchema
         }
     },
     "ConstantCurve": {
+		"id_prefix_override": "Constant.Curve",
         "display_name": "Constant Curve",
         "output_value_type": "Curve",
         "settings": {
@@ -1114,6 +1230,7 @@ class_name AssetNodesSchema
     
     # BlockSubset (single-node value type)
     "BlockSubset": {
+		"id_prefix_override": "BlockSet.BlockMask",
         "display_name": "Block Subset",
         "output_value_type": "BlockSubset",
         "settings": {
@@ -1137,6 +1254,7 @@ class_name AssetNodesSchema
     
     # Pattern nodes
     "FloorPattern": {
+		"id_prefix_override": "Floor.Pattern",
         "display_name": "Floor Pattern",
         "output_value_type": "Pattern",
         "settings": {
@@ -1148,6 +1266,7 @@ class_name AssetNodesSchema
         }
     },
     "BlockTypePattern": {
+		"id_prefix_override": "BlockType.Pattern",
         "display_name": "Block Type Pattern",
         "output_value_type": "Pattern",
         "settings": {
@@ -1159,6 +1278,7 @@ class_name AssetNodesSchema
         }
     },
     "BlockSetPattern": {
+		"id_prefix_override": "BlockSet.Pattern",
         "display_name": "Block Set Pattern",
         "output_value_type": "Pattern",
         "settings": {
@@ -1169,6 +1289,7 @@ class_name AssetNodesSchema
         }
     },
     "NotPattern": {
+		"id_prefix_override": "Not.Pattern",
         "display_name": "Not Pattern",
         "output_value_type": "Pattern",
         "settings": {
@@ -1181,7 +1302,8 @@ class_name AssetNodesSchema
     
     # Stripe (single-node value type)
     "Stripe": {
-        "display_name": "Stripe",
+		"id_prefix_override": "StripeStripedMP",
+        "display_name": "Material Stripe",
         "output_value_type": "Stripe",
         "settings": {
             "TopY": { "gd_type": TYPE_INT, "default_value": 0 },
@@ -1216,6 +1338,7 @@ class_name AssetNodesSchema
     
     # Delimiter for Positions Cell Noise Density Return Type (single-node value type)
     "DelimiterDensityPCNReturnType": {
+		"id_prefix_override": "Delimiter.DensityPCNReturnType",
         "display_name": "Delimiter (Density Cell Noise Return Type)",
         "output_value_type": "DelimiterDensityPCNReturnType",
         "settings": {
@@ -1229,6 +1352,7 @@ class_name AssetNodesSchema
     
     # Scanner nodes
     "ColumnLinearScanner": {
+		"id_prefix_override": "ColumnLinear.Scanner",
         "display_name": "Column Linear Scanner",
         "output_value_type": "Scanner",
         "settings": {
@@ -1242,6 +1366,7 @@ class_name AssetNodesSchema
         }
     },
     "OriginScanner": {
+		"id_prefix_override": "Origin.Scanner",
         "display_name": "Origin Scanner",
         "output_value_type": "Scanner",
         "settings": {
@@ -1266,6 +1391,7 @@ class_name AssetNodesSchema
         }
     },
     "DensityProp": {
+		"id_prefix_override": "Density.Prop",
         "display_name": "Density Prop",
         "output_value_type": "Prop",
         "settings": {
@@ -1283,6 +1409,7 @@ class_name AssetNodesSchema
     
     # Assignments nodes
     "ConstantAssignments": {
+		"id_prefix_override": "Constant.Assignments",
         "display_name": "Constant Assignments",
         "output_value_type": "Assignments",
         "settings": {
@@ -1295,12 +1422,14 @@ class_name AssetNodesSchema
     
     # Positions Cell Noise Distance Function nodes
     "EuclideanPCNDistanceFunction": {
+		"id_prefix_override": "PCNDistanceFunction",
         "display_name": "Euclidean Distance Function",
         "output_value_type": "PCNDistanceFunction",
     },
     
     # Environment/Tint Provider nodes
     "ConstantEnvironmentProvider": {
+		"id_prefix_override": "Constant.EnvironmentProvider",
         "display_name": "Constant Environment Provider",
         "output_value_type": "EnvironmentProvider",
         "settings": {
@@ -1308,6 +1437,7 @@ class_name AssetNodesSchema
         }
     },
     "DensityDelimitedEnvironmentProvider": {
+		"id_prefix_override": "DensityDelimited.EnvironmentProvider",
         "display_name": "Density Delimited Environment Provider",
         "output_value_type": "EnvironmentProvider",
         "connections": {
@@ -1316,6 +1446,7 @@ class_name AssetNodesSchema
         }
     },
     "ConstantTintProvider": {
+		"id_prefix_override": "Constant.TintProvider",
         "display_name": "Constant Tint Provider",
         "output_value_type": "TintProvider",
         "settings": {
@@ -1323,6 +1454,7 @@ class_name AssetNodesSchema
         }
     },
     "DensityDelimitedTintProvider": {
+		"id_prefix_override": "DensityDelimited.TintProvider",
         "display_name": "Density Delimited Tint Provider",
         "output_value_type": "TintProvider",
         "connections": {
@@ -1385,12 +1517,14 @@ class_name AssetNodesSchema
         }
     },
     "ManhattanPCNDistanceFunction": {
+		"id_prefix_override": "PCNDistanceFunction",
         "display_name": "Manhattan Distance Function",
         "output_value_type": "PCNDistanceFunction",
     },
     
     # Terrain nodes
     "DAOTerrain": {
+		"id_prefix_override": "Terrain",
         "display_name": "DAO Terrain",
         "output_value_type": "Terrain",
         "connections": {
@@ -1449,6 +1583,7 @@ class_name AssetNodesSchema
     
     # Additional Patterns
     "CeilingPattern": {
+		"id_prefix_override": "Ceiling.Pattern",
         "display_name": "Ceiling Pattern",
         "output_value_type": "Pattern",
         "settings": {
@@ -1460,6 +1595,7 @@ class_name AssetNodesSchema
         }
     },
     "OrPattern": {
+		"id_prefix_override": "Or.Pattern",
         "display_name": "Or Pattern",
         "output_value_type": "Pattern",
         "settings": {
@@ -1470,6 +1606,7 @@ class_name AssetNodesSchema
         }
     },
     "AndPattern": {
+		"id_prefix_override": "And.Pattern",
         "display_name": "And Pattern",
         "output_value_type": "Pattern",
         "settings": {
@@ -1480,6 +1617,7 @@ class_name AssetNodesSchema
         }
     },
     "OffsetPattern": {
+		"id_prefix_override": "Offset.Pattern",
         "display_name": "Offset Pattern",
         "output_value_type": "Pattern",
         "settings": {
@@ -1491,6 +1629,7 @@ class_name AssetNodesSchema
         }
     },
     "ImportedPattern": {
+		"id_prefix_override": "Imported.Pattern",
         "display_name": "Imported Pattern",
         "output_value_type": "Pattern",
         "settings": {
@@ -1499,6 +1638,7 @@ class_name AssetNodesSchema
         }
     },
     "WallPattern": {
+		"id_prefix_override": "Wall.Pattern",
         "display_name": "Wall Pattern",
         "output_value_type": "Pattern",
         "settings": {
@@ -1512,6 +1652,7 @@ class_name AssetNodesSchema
         }
     },
     "SurfacePattern": {
+		"id_prefix_override": "Surface.Pattern",
         "display_name": "Surface Pattern",
         "output_value_type": "Pattern",
         "settings": {
@@ -1529,6 +1670,7 @@ class_name AssetNodesSchema
         }
     },
     "CuboidPattern": {
+		"id_prefix_override": "Cuboid.Pattern",
         "display_name": "Cuboid Pattern",
         "output_value_type": "Pattern",
         "settings": {
@@ -1541,6 +1683,7 @@ class_name AssetNodesSchema
         }
     },
     "FieldFunctionPattern": {
+		"id_prefix_override": "FieldFunction.Pattern",
         "display_name": "Field Function Pattern",
         "output_value_type": "Pattern",
         "settings": {
@@ -1554,6 +1697,7 @@ class_name AssetNodesSchema
     
     # Additional Scanners
     "ColumnRandomScanner": {
+		"id_prefix_override": "ColumnRandom.Scanner",
         "display_name": "Column Random Scanner",
         "output_value_type": "Scanner",
         "settings": {
@@ -1569,6 +1713,7 @@ class_name AssetNodesSchema
         }
     },
     "AreaScanner": {
+		"id_prefix_override": "Area.Scanner",
         "display_name": "Area Scanner",
         "output_value_type": "Scanner",
         "settings": {
@@ -1582,6 +1727,7 @@ class_name AssetNodesSchema
         }
     },
     "ImportedScanner": {
+		"id_prefix_override": "Imported.Scanner",
         "display_name": "Imported Scanner",
         "output_value_type": "Scanner",
         "settings": {
@@ -1593,6 +1739,7 @@ class_name AssetNodesSchema
     
     # Additional Props
     "ColumnProp": {
+		"id_prefix_override": "Column.Prop",
         "display_name": "Column Prop",
         "output_value_type": "Prop",
         "settings": {
@@ -1605,6 +1752,7 @@ class_name AssetNodesSchema
         }
     },
     "PrefabProp": {
+		"id_prefix_override": "Prefab.Prop",
         "display_name": "Prefab Prop",
         "output_value_type": "Prop",
         "settings": {
@@ -1624,6 +1772,7 @@ class_name AssetNodesSchema
         }
     },
     "ClusterProp": {
+		"id_prefix_override": "Cluster.Prop",
         "display_name": "Cluster Prop",
         "output_value_type": "Prop",
         "settings": {
@@ -1638,6 +1787,7 @@ class_name AssetNodesSchema
         }
     },
     "UnionProp": {
+		"id_prefix_override": "Union.Prop",
         "display_name": "Union Prop",
         "output_value_type": "Prop",
         "settings": {
@@ -1648,6 +1798,7 @@ class_name AssetNodesSchema
         }
     },
     "OffsetProp": {
+		"id_prefix_override": "Offset.Prop",
         "display_name": "Offset Prop",
         "output_value_type": "Prop",
         "settings": {
@@ -1659,6 +1810,7 @@ class_name AssetNodesSchema
         }
     },
     "WeightedProp": {
+		"id_prefix_override": "Weighted.Prop",
         "display_name": "Weighted Prop",
         "output_value_type": "Prop",
         "settings": {
@@ -1670,6 +1822,7 @@ class_name AssetNodesSchema
         }
     },
     "QueueProp": {
+		"id_prefix_override": "Queue.Prop",
         "display_name": "Queue Prop",
         "output_value_type": "Prop",
         "settings": {
@@ -1680,6 +1833,7 @@ class_name AssetNodesSchema
         }
     },
     "PondFillerProp": {
+		"id_prefix_override": "PondFiller.Prop",
         "display_name": "Pond Filler Prop",
         "output_value_type": "Prop",
         "settings": {
@@ -1695,6 +1849,7 @@ class_name AssetNodesSchema
         }
     },
     "ImportedProp": {
+		"id_prefix_override": "Imported.Prop",
         "display_name": "Imported Prop",
         "output_value_type": "Prop",
         "settings": {
@@ -1705,13 +1860,15 @@ class_name AssetNodesSchema
     
     # Additional Assignments
     "SandwichAssignments": {
+		"id_prefix_override": "Sandwich.Assignments",
         "display_name": "Sandwich Assignments",
         "output_value_type": "Assignments",
         "connections": {
-            "Delimiters": { "value_type": "DelimiterAssignments", "multi": true },
+            "Delimiters": { "value_type": "SMDelimiterAssignments", "multi": true },
         }
     },
     "WeightedAssignments": {
+		"id_prefix_override": "Weighted.Assignments",
         "display_name": "Weighted Assignments",
         "output_value_type": "Assignments",
         "settings": {
@@ -1723,6 +1880,7 @@ class_name AssetNodesSchema
         }
     },
     "ImportedAssignments": {
+		"id_prefix_override": "Imported.Assignments",
         "display_name": "Imported Assignments",
         "output_value_type": "Assignments",
         "settings": {
@@ -1730,16 +1888,18 @@ class_name AssetNodesSchema
         }
     },
     "FieldFunctionAssignments": {
+		"id_prefix_override": "FieldFunction.Assignments",
         "display_name": "Field Function Assignments",
         "output_value_type": "Assignments",
         "connections": {
             "FieldFunction": { "value_type": "Density", "multi": false },
-            "Delimiters": { "value_type": "DelimiterAssignments", "multi": true },
+            "Delimiters": { "value_type": "FFDelimiterAssignments", "multi": true },
         }
     },
     
     # Directionality
     "StaticDirectionality": {
+		"id_prefix_override": "Static.Directionality",
         "display_name": "Static Directionality",
         "output_value_type": "Directionality",
         "settings": {
@@ -1751,6 +1911,7 @@ class_name AssetNodesSchema
         }
     },
     "RandomDirectionality": {
+		"id_prefix_override": "Random.Directionality",
         "display_name": "Random Directionality",
         "output_value_type": "Directionality",
         "settings": {
@@ -1761,6 +1922,7 @@ class_name AssetNodesSchema
         }
     },
     "ImportedDirectionality": {
+		"id_prefix_override": "Imported.Directionality",
         "display_name": "Imported Directionality",
         "output_value_type": "Directionality",
         "settings": {
@@ -1770,6 +1932,7 @@ class_name AssetNodesSchema
     
     # VectorProvider
     "ConstantVectorProvider": {
+		"id_prefix_override": "Constant.VectorProvider",
         "display_name": "Constant Vector Provider",
         "output_value_type": "VectorProvider",
         "connections": {
@@ -1779,10 +1942,12 @@ class_name AssetNodesSchema
     
     # Conditions (for SpaceAndDepth)
     "AlwaysTrueCondition": {
+		"id_prefix_override": "AlwaysTrueConditionSADMP",
         "display_name": "Always True Condition",
         "output_value_type": "Condition",
     },
     "OrCondition": {
+		"id_prefix_override": "OrConditionSADMP",
         "display_name": "Or Condition",
         "output_value_type": "Condition",
         "connections": {
@@ -1790,6 +1955,7 @@ class_name AssetNodesSchema
         }
     },
     "AndCondition": {
+		"id_prefix_override": "AndConditionSADMP",
         "display_name": "And Condition",
         "output_value_type": "Condition",
         "connections": {
@@ -1797,6 +1963,7 @@ class_name AssetNodesSchema
         }
     },
     "NotCondition": {
+		"id_prefix_override": "NotConditionSADMP",
         "display_name": "Not Condition",
         "output_value_type": "Condition",
         "connections": {
@@ -1804,6 +1971,7 @@ class_name AssetNodesSchema
         }
     },
     "EqualsCondition": {
+		"id_prefix_override": "EqualsConditionSADMP",
         "display_name": "Equals Condition",
         "output_value_type": "Condition",
         "settings": {
@@ -1812,6 +1980,7 @@ class_name AssetNodesSchema
         }
     },
     "GreaterThanCondition": {
+		"id_prefix_override": "GreaterThanConditionSADMP",
         "display_name": "Greater Than Condition",
         "output_value_type": "Condition",
         "settings": {
@@ -1820,6 +1989,7 @@ class_name AssetNodesSchema
         }
     },
     "SmallerThanCondition": {
+		"id_prefix_override": "SmallerThanConditionSADMP",
         "display_name": "Smaller Than Condition",
         "output_value_type": "Condition",
         "settings": {
@@ -1830,6 +2000,7 @@ class_name AssetNodesSchema
     
     # Layers (for SpaceAndDepth)
     "WeightedThicknessLayer": {
+		"id_prefix_override": "WeightedThicknessLayerSADMP",
         "display_name": "Weighted Thickness Layer",
         "output_value_type": "Layer",
         "settings": {
@@ -1840,6 +2011,7 @@ class_name AssetNodesSchema
         }
     },
     "ConstantThicknessLayer": {
+		"id_prefix_override": "ConstantThicknessLayerSADMP",
         "display_name": "Constant Thickness Layer",
         "output_value_type": "Layer",
         "settings": {
@@ -1850,6 +2022,7 @@ class_name AssetNodesSchema
         }
     },
     "RangeThicknessLayer": {
+		"id_prefix_override": "RangeThicknessLayerSADMP",
         "display_name": "Range Thickness Layer",
         "output_value_type": "Layer",
         "settings": {
@@ -1862,6 +2035,7 @@ class_name AssetNodesSchema
         }
     },
     "NoiseThicknessLayer": {
+		"id_prefix_override": "NoiseThicknessLayerSADMP",
         "display_name": "Noise Thickness Layer",
         "output_value_type": "Layer",
         "connections": {
@@ -1872,6 +2046,7 @@ class_name AssetNodesSchema
     
     # Nested types
     "CaseSwitch": {
+		"id_prefix_override": "Case.Switch.Density",
         "display_name": "Switch Case",
         "output_value_type": "CaseSwitch",
         "settings": {
@@ -1882,6 +2057,7 @@ class_name AssetNodesSchema
         }
     },
     "KeyMultiMix": {
+		"id_prefix_override": "Key.MultiMix.Density",
         "display_name": "Multi Mix Key",
         "output_value_type": "KeyMultiMix",
         "settings": {
@@ -1890,6 +2066,7 @@ class_name AssetNodesSchema
         }
     },
     "WeightedAssignment": {
+		"id_prefix_override": "Weight.Weighted.Assignments",
         "display_name": "Weighted Assignment",
         "output_value_type": "WeightedAssignment",
         "settings": {
@@ -1899,9 +2076,24 @@ class_name AssetNodesSchema
             "Assignments": { "value_type": "Assignments", "multi": false },
         }
     },
-    "DelimiterAssignments": {
-        "display_name": "Delimiter (Assignments)",
-        "output_value_type": "DelimiterAssignments",
+    "SMDelimiterAssignments": {
+		"id_prefix_override": "Delimiter.Sandwich.Assignments",
+        "display_name": "Delimiter (Sandwich Assignments)",
+        "output_value_type": "SMDelimiterAssignments",
+        "settings": {
+            "MaxY": { "gd_type": TYPE_FLOAT, "default_value": 100.0 },
+            "MinY": { "gd_type": TYPE_FLOAT, "default_value": 0.0 },
+            "Max": { "gd_type": TYPE_FLOAT, "default_value": 100.0 },
+            "Min": { "gd_type": TYPE_FLOAT, "default_value": 0.0 },
+        },
+        "connections": {
+            "Assignments": { "value_type": "Assignments", "multi": false },
+        }
+    },
+    "FFDelimiterAssignments": {
+		"id_prefix_override": "Delimiter.FieldFunction.Assignments",
+        "display_name": "Delimiter (Field Function Assignments)",
+        "output_value_type": "FFDelimiterAssignments",
         "settings": {
             "MaxY": { "gd_type": TYPE_FLOAT, "default_value": 100.0 },
             "MinY": { "gd_type": TYPE_FLOAT, "default_value": 0.0 },
@@ -1913,6 +2105,7 @@ class_name AssetNodesSchema
         }
     },
     "DelimiterEnvironment": {
+		"id_prefix_override": "Delimiter.DensityDelimited.EnvironmentProvider",
         "display_name": "Delimiter (Environment)",
         "output_value_type": "DelimiterEnvironment",
         "connections": {
@@ -1921,6 +2114,7 @@ class_name AssetNodesSchema
         }
     },
     "DelimiterTint": {
+		"id_prefix_override": "Delimiter.DensityDelimited.TintProvider",
         "display_name": "Delimiter (Tint)",
         "output_value_type": "DelimiterTint",
         "connections": {
@@ -1929,6 +2123,7 @@ class_name AssetNodesSchema
         }
     },
     "Range": {
+		"id_prefix_override": "Decimal.Range",
         "display_name": "Range",
         "output_value_type": "Range",
         "settings": {
@@ -1937,6 +2132,7 @@ class_name AssetNodesSchema
         }
     },
     "DelimiterPattern": {
+		"id_prefix_override": "Delimiter.FieldFunction.Pattern",
         "display_name": "Delimiter (Pattern)",
         "output_value_type": "DelimiterPattern",
         "settings": {
@@ -1945,6 +2141,7 @@ class_name AssetNodesSchema
         }
     },
     "WeightedPath": {
+		"id_prefix_override": "WeightedPath.Prefab.Prop",
         "display_name": "Weighted Path",
         "output_value_type": "WeightedPath",
         "settings": {
@@ -1953,6 +2150,7 @@ class_name AssetNodesSchema
         }
     },
     "WeightedClusterProp": {
+		"id_prefix_override": "Weighted.Cluster.Prop",
         "display_name": "Weighted Cluster Prop",
         "output_value_type": "WeightedClusterProp",
         "settings": {
@@ -1963,6 +2161,7 @@ class_name AssetNodesSchema
         }
     },
     "BlockColumn": {
+		"id_prefix_override": "Block.Column.Prop",
         "display_name": "Block Column",
         "output_value_type": "BlockColumn",
         "settings": {
@@ -1973,6 +2172,7 @@ class_name AssetNodesSchema
         }
     },
     "EntryWeightedProp": {
+		"id_prefix_override": "Entry.Weighted.Prop",
         "display_name": "Entry Weighted Prop",
         "output_value_type": "EntryWeightedProp",
         "settings": {
@@ -1983,6 +2183,7 @@ class_name AssetNodesSchema
         }
     },
     "RuleBlockMask": {
+		"id_prefix_override": "Rule.BlockMask",
         "display_name": "Rule (Block Mask)",
         "output_value_type": "RuleBlockMask",
         "connections": {
@@ -1991,33 +2192,3 @@ class_name AssetNodesSchema
         }
     },
 }
-
-
-func get_node_type_default_name(node_type: String) -> String:
-    if node_type == "Unknown":
-        return "[Unknown]"
-    if not node_schema.has(node_type):
-        return node_type
-    return node_schema[node_type]["display_name"]
-
-func resolve_asset_node_type(type_key: String, output_value_type: String) -> String:
-    if output_value_type == "":
-        print_debug("No output type provided, prefix based inference not implemented yet")
-        return "Unknown"
-    if output_value_type.begins_with("ROOT"):
-        var parts: = output_value_type.split("|")
-        if parts.size() != 2:
-            print_debug("Invalid root node type key: %s" % output_value_type)
-            return "Unknown"
-        if parts[1] not in workspace_root_types:
-            print_debug("Invalid root node type lookup (workspace id): %s" % parts[1])
-            return "Unknown"
-        return workspace_root_types[parts[1]]
-    else:
-        if type_key == "NO_TYPE_KEY":
-            type_key = ""
-        var type_inference_key: = "%s|%s" % [output_value_type, type_key]
-        if not node_types.has(type_inference_key):
-            print_debug("Type inference key not found: %s" % type_inference_key)
-            return "Unknown"
-        return node_types[type_inference_key]

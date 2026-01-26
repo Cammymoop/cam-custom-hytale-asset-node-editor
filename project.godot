@@ -16,6 +16,10 @@ config/features=PackedStringArray("4.5", "GL Compatibility")
 run/low_processor_mode=true
 config/icon="res://icon.svg"
 
+[autoload]
+
+Util="*res://util.gd"
+
 [display]
 
 window/subwindows/embed_subwindows=false
