@@ -31,8 +31,8 @@ func _init():
 		print("\nFAILED: %d errors found" % errors.size())
 		quit(1)
 
+## Check that all value_types referenced in connections exist in value_types array
 func validate_value_types_complete():
-	"""Check that all value_types referenced in connections exist in value_types array"""
 	for node_name in schema.node_schema:
 		var node_def = schema.node_schema[node_name]
 		if node_def.has("connections"):
@@ -65,15 +65,15 @@ func validate_output_value_types():
 		if actual_output != expected_output:
 			add_error("Node '%s' has output_value_type '%s' but node_types implies '%s'" % [node_name, actual_output, expected_output])
 
+## Check that workspace_root_types reference valid node types
 func validate_workspace_root_types():
-	"""Check that workspace_root_types reference valid node types"""
 	for workspace_id in schema.workspace_root_types:
 		var node_type = schema.workspace_root_types[workspace_id]
 		if not schema.node_schema.has(node_type):
 			add_error("Workspace type '%s' maps to missing node type '%s'" % [workspace_id, node_type])
 
+## Validate all nodes in a JSON file
 func validate_json_file(file_path: String):
-	"""Validate all nodes in a JSON file"""
 	var file = FileAccess.open(file_path, FileAccess.READ)
 	if not file:
 		add_error("Cannot open file '%s'" % file_path)
@@ -101,8 +101,8 @@ func validate_json_file(file_path: String):
 	# Walk all nodes recursively, tracking their parent connection types
 	walk_node_recursive(root, root_type, file_path)
 
+## Recursively walk all nodes and their connections
 func walk_node_recursive(node: Variant, parent_type: String, file_path: String):
-	"""Recursively walk all nodes and their connections"""
 	if typeof(node) != TYPE_DICTIONARY:
 		return
 	
@@ -118,36 +118,30 @@ func walk_node_recursive(node: Variant, parent_type: String, file_path: String):
 		if key.begins_with("$"):
 			continue
 		
-		# Determine expected value type for this connection
+		# Determine if this is a connection or setting
+		var is_connection = false
 		var expected_value_type = ""
-		
-		# Check if this key is in override_types (special connection names)
-		if schema.override_types.has(key):
-			expected_value_type = schema.override_types[key]
-		elif node_schema_def != null and node_schema_def.has("connections"):
+		if node_schema_def != null and node_schema_def.has("connections"):
 			if node_schema_def["connections"].has(key):
+				is_connection = true
 				expected_value_type = node_schema_def["connections"][key]["value_type"]
 		
-		if typeof(value) == TYPE_DICTIONARY:
-			if value.has("$NodeId"):
-				var child_type = infer_node_type(value, expected_value_type)
-				validate_node(value, child_type, file_path)
-				walk_node_recursive(value, child_type, file_path)
-			else:
-				walk_node_recursive(value, parent_type, file_path)
-		
-		elif typeof(value) == TYPE_ARRAY:
-			for item in value:
-				if typeof(item) == TYPE_DICTIONARY:
-					if item.has("$NodeId"):
+		if is_connection:
+			# This is a connection - recurse into child nodes
+			if typeof(value) == TYPE_DICTIONARY:
+				if value.has("$NodeId"):
+					var child_type = infer_node_type(value, expected_value_type)
+					validate_node(value, child_type, file_path)
+					walk_node_recursive(value, child_type, file_path)
+			elif typeof(value) == TYPE_ARRAY:
+				for item in value:
+					if typeof(item) == TYPE_DICTIONARY and item.has("$NodeId"):
 						var child_type = infer_node_type(item, expected_value_type)
 						validate_node(item, child_type, file_path)
 						walk_node_recursive(item, child_type, file_path)
-					else:
-						walk_node_recursive(item, parent_type, file_path)
 
+## Validate a single node
 func validate_node(node: Dictionary, node_type: String, file_path: String):
-	"""Validate a single node"""
 	var node_id = node.get("$NodeId", "UNKNOWN")
 	
 	if node_type == "":
@@ -167,6 +161,8 @@ func validate_node(node: Dictionary, node_type: String, file_path: String):
 		if prop_name.begins_with("$") or prop_name == "Type":
 			continue
 		
+		var prop_value = node[prop_name]
+		
 		# Check if it's a setting
 		var is_setting = node_def.has("settings") and node_def["settings"].has(prop_name)
 		
@@ -175,42 +171,41 @@ func validate_node(node: Dictionary, node_type: String, file_path: String):
 		
 		if not is_setting and not is_connection:
 			add_error("Node '%s' (type '%s') has undocumented property '%s' in file '%s'" % [node_id, node_type, prop_name, file_path])
+			continue
+		
+		# Validate setting types
+		if is_setting:
+			var expected_type = node_def["settings"][prop_name]["gd_type"]
+			var actual_type = typeof(prop_value)
+			
+			# JSON doesn't distinguish between int and float, so accept float for int fields
+			var type_matches = (actual_type == expected_type) or (expected_type == TYPE_INT and actual_type == TYPE_FLOAT)
+			
+			if not type_matches:
+				add_error("Node '%s' (type '%s') property '%s' has wrong type: expected %s, got %s in file '%s'" % [node_id, node_type, prop_name, type_string(expected_type), type_string(actual_type), file_path])
 
+## Infer the type of the root node
 func infer_node_type_root(node: Dictionary, workspace_id: String) -> String:
-	"""Infer the type of the root node"""
 	if workspace_id != "" and schema.workspace_root_types.has(workspace_id):
 		return schema.workspace_root_types[workspace_id]
 	return ""
 
+## Infer the node type from a JSON node given its parent connection type
 func infer_node_type(node: Dictionary, parent_value_type: String) -> String:
-	"""Infer the node type from a JSON node given its parent connection type"""
-	var node_id = node.get("$NodeId", "")
+	if parent_value_type == "":
+		return ""
 	
-	# 1. If parent_value_type is already a concrete node type (starts with __), use it
-	if parent_value_type.begins_with("__"):
-		return parent_value_type
+	# Get the Type field value (empty string if not present)
+	var type_value = node.get("Type", "")
 	
-	# 2. Check override_types for special cases (but only check the Type field value)
-	# This is for cases like Type: "DAOTerrain" but we don't have that in override_types
-	# So skip this check for now
-	
-	# 3. Infer from node_types using Type field and parent value type
-	if node.has("Type") and parent_value_type != "":
-		var type_value = node["Type"]
-		var key = "%s|%s" % [parent_value_type, type_value]
-		if schema.node_types.has(key):
-			return schema.node_types[key]
-	
-	# 4. Infer from connection_type_schema by NodeId prefix
-	# (for single-node value types without Type field)
-	for type_name in schema.connection_type_schema:
-		var prefix = schema.connection_type_schema[type_name].get("node_id_prefix", "")
-		if node_id.begins_with(prefix):
-			return type_name
+	# Look up in node_types using format "{ValueType}|{Type}"
+	var key = "%s|%s" % [parent_value_type, type_value]
+	if schema.node_types.has(key):
+		return schema.node_types[key]
 	
 	return ""
 
+## Add an error message
 func add_error(message: String):
-	"""Add an error message"""
 	print("ERROR: %s" % message)
 	errors.append(message)

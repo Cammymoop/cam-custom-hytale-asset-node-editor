@@ -26,7 +26,7 @@ class_name AssetNodesSchema
     "WeightedMaterial",
     "DelimiterFieldFunctionMP",
     "DelimiterDensityPCNReturnType",
-    "__Runtime",
+    "Runtime",
 ]
 
 @export var node_types: Dictionary[String, String] = {
@@ -101,14 +101,37 @@ class_name AssetNodesSchema
     # PCN ReturnType nodes
     "PCNReturnType|Density": "DensityPCNReturnType",
     "PCNReturnType|CellValue": "CellValuePCNReturnType",
+    
+    # Single-node value types (no Type field - empty string after |)
+    "CurvePoint|": "CurvePoint",
+    "Material|": "Material",
+    "Point3D|": "Point3D",
+    "BlockMask|": "BlockMask",
+    "BlockSubset|": "BlockSubset",
+    "Stripe|": "Stripe",
+    "WeightedMaterial|": "WeightedMaterial",
+    "DelimiterFieldFunctionMP|": "DelimiterFieldFunctionMP",
+    "DelimiterDensityPCNReturnType|": "DelimiterDensityPCNReturnType",
+    
+    # PointGenerator nodes
+    "PointGenerator|Mesh": "MeshPointGenerator",
+    
+    # PCNDistanceFunction nodes
+    "PCNDistanceFunction|Euclidean": "EuclideanPCNDistanceFunction",
+    
+    # Terrain nodes
+    "Terrain|DAOTerrain": "DAOTerrain",
+    
+    # Runtime nodes (no Type field)
+    "Runtime|": "Runtime",
 }
 
 @export var workspace_root_types: Dictionary[String, String] = {
-    "HytaleGenerator - Biome": "__BiomeRoot",
+    "HytaleGenerator - Biome": "BiomeRoot",
 }
 
 @export var node_schema: Dictionary[String, Dictionary] = {
-    "__BiomeRoot": {
+    "BiomeRoot": {
         "display_name": "[ROOT] Biome",
         "output_value_type": "__ROOT_ONLY",
         "settings": {
@@ -117,7 +140,7 @@ class_name AssetNodesSchema
         "connections": {
             "Terrain": { "value_type": "Terrain", "multi": false },
             "MaterialProvider": { "value_type": "MaterialProvider", "multi": false },
-            "Props": { "value_type": "__Runtime", "multi": true },
+            "Props": { "value_type": "Runtime", "multi": true },
             "EnvironmentProvider": { "value_type": "EnvironmentProvider", "multi": false },
             "TintProvider": { "value_type": "TintProvider", "multi": false },
         }
@@ -508,9 +531,9 @@ class_name AssetNodesSchema
         }
     },
     
-    # PointGenerator (single-node value type)
-    "PointGenerator": {
-        "display_name": "Point Generator (Mesh)",
+    # PointGenerator nodes
+    "MeshPointGenerator": {
+        "display_name": "Mesh Point Generator",
         "output_value_type": "PointGenerator",
         "settings": {
             "Type": { "gd_type": TYPE_STRING, "default_value": "Mesh" },
@@ -743,9 +766,9 @@ class_name AssetNodesSchema
         }
     },
     
-    # Positions Cell Noise Distance Function (single-node value type)
-    "PCNDistanceFunction": {
-        "display_name": "Cell Noise Distance Function",
+    # Positions Cell Noise Distance Function nodes
+    "EuclideanPCNDistanceFunction": {
+        "display_name": "Euclidean Distance Function",
         "output_value_type": "PCNDistanceFunction",
         "settings": {
             "Type": { "gd_type": TYPE_STRING, "default_value": "Euclidean" },
@@ -791,9 +814,9 @@ class_name AssetNodesSchema
         }
     },
     
-    # Special node types without Type field
-    "__Terrain": {
-        "display_name": "Terrain",
+    # Terrain nodes
+    "DAOTerrain": {
+        "display_name": "DAO Terrain",
         "output_value_type": "Terrain",
         "settings": {
             "Type": { "gd_type": TYPE_STRING, "default_value": "DAOTerrain" },
@@ -802,9 +825,11 @@ class_name AssetNodesSchema
             "Density": { "value_type": "Density", "multi": false },
         }
     },
-    "__Runtime": {
+    
+    # Runtime nodes (no Type field)
+    "Runtime": {
         "display_name": "Runtime",
-        "output_value_type": "__Runtime",
+        "output_value_type": "Runtime",
         "settings": {
             "Skip": { "gd_type": TYPE_BOOL, "default_value": false },
             "Runtime": { "gd_type": TYPE_INT, "default_value": 0 },
@@ -816,49 +841,6 @@ class_name AssetNodesSchema
     },
 }
 
-@export var override_types: Dictionary[String, String] = {
-    "Terrain": "__Terrain",
-    "Runtime": "__Runtime",
-}
-
-@export var connection_type_schema: Dictionary[String, Dictionary] = {
-    # Single-node value types (identified by NodeID prefix)
-    # Order matters - more specific prefixes should come first
-    "BlockSubset": {
-        "node_id_prefix": "BlockSet.BlockMask",
-    },
-    "Stripe": {
-        "node_id_prefix": "StripeStripedMP",
-    },
-    "DelimiterFieldFunctionMP": {
-        "node_id_prefix": "DelimiterFieldFunctionMP",
-    },
-    "DelimiterDensityPCNReturnType": {
-        "node_id_prefix": "Delimiter.DensityPCNReturnType",
-    },
-    "PCNDistanceFunction": {
-        "node_id_prefix": "PCNDistanceFunction-",
-    },
-    "PointGenerator": {
-        "node_id_prefix": "MeshPointGenerator",
-    },
-    "BlockMask": {
-        "node_id_prefix": "BlockMask-",
-    },
-    "Material": {
-        "node_id_prefix": "Material-",
-    },
-    "CurvePoint": {
-        "node_id_prefix": "CurvePoint-",
-    },
-    "Point3D": {
-        "node_id_prefix": "Point3D-",
-    },
-    # WeightedMaterial comes after WeightedMaterialProvider in node_types check
-    "WeightedMaterial": {
-        "node_id_prefix": "WeightedMaterial-",
-    },
-}
 
 func get_node_type_default_name(node_type: String) -> String:
     if not node_schema.has(node_type):
