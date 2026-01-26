@@ -92,18 +92,23 @@ func validate_json_file(file_path: String):
 		add_error("JSON parse error in file '%s': %s" % [file_path, json.get_error_message()])
 		return
 	
-	var root = json.data
-	if typeof(root) != TYPE_DICTIONARY:
+	var root_data = json.data
+	if typeof(root_data) != TYPE_DICTIONARY:
 		add_error("Root of JSON file '%s' is not a dictionary" % file_path)
 		return
 	
 	# Validate root node
-	var workspace_id = root.get("$NodeEditorMetadata", {}).get("$WorkspaceID", "")
-	var root_type = infer_node_type_root(root, workspace_id)
-	validate_node(root, root_type, file_path)
+	var workspace_id = root_data.get("$NodeEditorMetadata", {}).get("$WorkspaceID", "")
+	if workspace_id == "":
+		workspace_id = root_data.get("$WorkspaceID", "")
+	if workspace_id == "":
+		add_error("No workspace ID found in root node or editor metadata in file '%s'" % file_path)
+
+	var root_type = schema.resolve_asset_node_type(root_data.get("Type", "NO_TYPE_KEY"), "ROOT|%s" % workspace_id)
+	validate_node(root_data, root_type, "NO_OUTPUT_TYPE", file_path)
 	
 	# Walk all nodes recursively, tracking their parent connection types
-	walk_node_recursive(root, root_type, file_path)
+	walk_node_recursive(root_data, root_type, file_path)
 
 ## Recursively walk all nodes and their connections
 func walk_node_recursive(node: Variant, parent_type: String, file_path: String):
@@ -134,23 +139,22 @@ func walk_node_recursive(node: Variant, parent_type: String, file_path: String):
 			# This is a connection - recurse into child nodes
 			if typeof(value) == TYPE_DICTIONARY:
 				if value.has("$NodeId"):
-					var child_type = infer_node_type(value, expected_value_type)
-					validate_node(value, child_type, file_path)
+					var child_type = schema.resolve_asset_node_type(value.get("Type", "NO_TYPE_KEY"), expected_value_type)
+					validate_node(value, child_type, expected_value_type, file_path)
 					walk_node_recursive(value, child_type, file_path)
 			elif typeof(value) == TYPE_ARRAY:
 				for item in value:
 					if typeof(item) == TYPE_DICTIONARY and item.has("$NodeId"):
-						var child_type = infer_node_type(item, expected_value_type)
-						validate_node(item, child_type, file_path)
+						var child_type = schema.resolve_asset_node_type(item.get("Type", "NO_TYPE_KEY"), expected_value_type)
+						validate_node(item, child_type, expected_value_type, file_path)
 						walk_node_recursive(item, child_type, file_path)
 
 ## Validate a single node
-func validate_node(node: Dictionary, node_type: String, file_path: String):
+func validate_node(node: Dictionary, node_type: String, expected_value_type: String, file_path: String):
 	var node_id = node.get("$NodeId", "UNKNOWN")
 	
-	if node_type == "":
-		add_error("Cannot infer type for node '%s' in file '%s'" % [node_id, file_path])
-		return
+	if node_type == "Unknown":
+		add_error("Cannot infer type for node '%s' in file '%s' with expected value type '%s'" % [node_id, file_path, expected_value_type])
 	
 	# Get the node schema
 	if not schema.node_schema.has(node_type):
@@ -187,27 +191,17 @@ func validate_node(node: Dictionary, node_type: String, file_path: String):
 			
 			if not type_matches:
 				add_error("Node '%s' (type '%s') property '%s' has wrong type: expected %s, got %s in file '%s'" % [node_id, node_type, prop_name, type_string(expected_type), type_string(actual_type), file_path])
-
-## Infer the type of the root node
-func infer_node_type_root(node: Dictionary, workspace_id: String) -> String:
-	if workspace_id != "" and schema.workspace_root_types.has(workspace_id):
-		return schema.workspace_root_types[workspace_id]
-	return ""
-
-## Infer the node type from a JSON node given its parent connection type
-func infer_node_type(node: Dictionary, parent_value_type: String) -> String:
-	if parent_value_type == "":
-		return ""
-	
-	# Get the Type field value (empty string if not present)
-	var type_value = node.get("Type", "")
-	
-	# Look up in node_types using format "{ValueType}|{Type}"
-	var key = "%s|%s" % [parent_value_type, type_value]
-	if schema.node_types.has(key):
-		return schema.node_types[key]
-	
-	return ""
+		
+		# Validate connection multi property
+		if is_connection:
+			var conn_def = node_def["connections"][prop_name]
+			var is_multi = conn_def.get("multi", false)
+			var is_array = typeof(prop_value) == TYPE_ARRAY
+			
+			if is_array and not is_multi:
+				add_error("Node '%s' (type '%s') connection '%s' is an array but schema doesn't mark it as multi: true in file '%s'" % [node_id, node_type, prop_name, file_path])
+			elif not is_array and is_multi and typeof(prop_value) == TYPE_DICTIONARY:
+				add_error("Node '%s' (type '%s') connection '%s' is marked as multi: true but contains a single node (should be array) in file '%s'" % [node_id, node_type, prop_name, file_path])
 
 ## Add an error message
 func add_error(message: String):

@@ -1,7 +1,12 @@
-[gd_scene load_steps=3 format=3 uid="uid://cgmj8na2ili3j"]
+[gd_scene load_steps=5 format=3 uid="uid://cgmj8na2ili3j"]
 
 [ext_resource type="Theme" uid="uid://cv3cabit36ilb" path="res://ui/main_theme.tres" id="1_0xm2m"]
 [ext_resource type="Script" uid="uid://b2hqpos1gajgs" path="res://asset_node_graph_edit.gd" id="1_ig7tw"]
+[ext_resource type="Script" uid="uid://dit1s6nyie23m" path="res://model/asset_nodes_schema.gd" id="3_h2yge"]
+
+[sub_resource type="Resource" id="Resource_1bvp3"]
+script = ExtResource("3_h2yge")
+metadata/_custom_type_script = "uid://dit1s6nyie23m"
 
 [node name="BaseControl" type="Control"]
 layout_mode = 3
@@ -28,7 +33,8 @@ zoom_min = 0.117
 zoom_max = 2.0
 show_zoom_label = true
 script = ExtResource("1_ig7tw")
-test_json_file = "res://test_files/Cammymoop Games.cammy-worldgen-test/Server/HytaleGenerator/Biomes/Basic_.json"
+test_json_file = "res://test_files/example_biomes/Void_Buffer_Oasis.json"
+schema = SubResource("Resource_1bvp3")
 
 [node name="TestGN" type="GraphNode" parent="AssetNodeGraphEdit"]
 layout_mode = 0

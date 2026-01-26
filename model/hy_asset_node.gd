@@ -13,7 +13,7 @@ extends Resource
 
 @export var raw_tree_data: Dictionary = {}
 
-static var special_keys: Array[String] = ["$NodeId", "Name", "Type"]
+static var special_keys: Array[String] = ["Type"]
 
 func is_connection_empty(conn_name: String) -> bool:
     if not connections.has(conn_name):

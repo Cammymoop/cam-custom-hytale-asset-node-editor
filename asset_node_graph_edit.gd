@@ -15,11 +15,6 @@ var root_node: HyAssetNode = null
 
 var asset_node_meta: Dictionary[String, Dictionary] = {}
 
-@export var override_types: Dictionary[String, String] = {
-    "BlockSet|BlockSet": "__BlockSubset", 
-    "Manual|Points": "Point", 
-}
-
 @export var no_left_types: Array[String] = [
     "__BiomeRoot",
 ]
@@ -37,6 +32,7 @@ var more_type_names: Dictionary[String, int] = {
 var type_id_lookup: Dictionary[String, int] = {}
 
 @export var use_json_positions: = true
+@export var json_positions_scale: Vector2 = Vector2(0.75, 0.75)
 var relative_root_position: Vector2 = Vector2(0, 0)
 
 var temp_pos: Vector2 = Vector2(-2200, 600)
@@ -144,7 +140,7 @@ func print_asset_node_list() -> void:
     for parent_type in typeless_subnode_registry.keys():
         prints("Typeless subnode registry: %s -> %s" % [parent_type, typeless_subnode_registry[parent_type]])
 
-func parse_asset_node_shallow(asset_node_data: Dictionary) -> HyAssetNode:
+func parse_asset_node_shallow(asset_node_data: Dictionary, output_value_type: String = "", known_node_type: String = "") -> HyAssetNode:
     if not asset_node_data:
         print_debug("Asset node data is empty")
         return null
@@ -159,14 +155,33 @@ func parse_asset_node_shallow(asset_node_data: Dictionary) -> HyAssetNode:
         print_debug("Warning: Asset node with ID %s already exists in lookup, overriding..." % asset_node.an_node_id)
     an_lookup[asset_node.an_node_id] = asset_node
     
-    asset_node.an_name = asset_node_data.get("Name", "<NO NAME>")
-    if verbose and not asset_node_data.has("Type"):
-        print_debug("Typeless node, keys: %s" % [asset_node_data.keys()])
-    asset_node.an_type = asset_node_data.get("Type", "<NO TYPE>")
+
+    if known_node_type != "":
+        asset_node.an_type = known_node_type
+    elif output_value_type != "ROOT":
+        asset_node.an_type = schema.resolve_asset_node_type(asset_node_data.get("Type", "NO_TYPE_KEY"), output_value_type)
+    
+    var type_schema: = {}
+    if asset_node.an_type and asset_node.an_type != "Unknown":
+        type_schema = schema.node_schema[asset_node.an_type]
+
+    asset_node.an_name = schema.get_node_type_default_name(asset_node.an_type)
     asset_node.raw_tree_data = asset_node_data.duplicate(true)
     
+    var connections_schema: Dictionary = type_schema.get("connections", {})
+    for conn_name in connections_schema.keys():
+        if connections_schema[conn_name].get("multi", false):
+            asset_node.connections[conn_name] = []
+        else:
+            asset_node.connections[conn_name] = null
+    
+    var settings_schema: Dictionary = type_schema.get("settings", {})
+    for setting_name in settings_schema.keys():
+        asset_node.settings[setting_name] = settings_schema[setting_name].get("default_value", null)
+
+    # fill out stuff in data even if it isn't in the schema
     for other_key in asset_node_data.keys():
-        if HyAssetNode.special_keys.has(other_key) or other_key.begins_with("$"):
+        if other_key.begins_with("$") or HyAssetNode.special_keys.has(other_key):
             continue
         
         var connected_data = check_for_asset_nodes(asset_node_data[other_key])
@@ -184,8 +199,8 @@ func parse_asset_node_shallow(asset_node_data: Dictionary) -> HyAssetNode:
     
     return asset_node
 
-func _inner_parse_asset_node_deep(asset_node_data: Dictionary) -> Dictionary:
-    var parsed_node: = parse_asset_node_shallow(asset_node_data)
+func _inner_parse_asset_node_deep(asset_node_data: Dictionary, output_value_type: String = "", base_node_type: String = "") -> Dictionary:
+    var parsed_node: = parse_asset_node_shallow(asset_node_data, output_value_type, base_node_type)
     var all_nodes: Array[HyAssetNode] = [parsed_node]
     for conn in parsed_node.connections.keys():
         if parsed_node.is_connection_empty(conn):
@@ -193,7 +208,11 @@ func _inner_parse_asset_node_deep(asset_node_data: Dictionary) -> Dictionary:
         
         var conn_nodes_data: = parsed_node.get_raw_connected_nodes(conn)
         for conn_node_idx in conn_nodes_data.size():
-            var sub_parse_result: = _inner_parse_asset_node_deep(conn_nodes_data[conn_node_idx])
+            var conn_value_type: = "Unknown"
+            if parsed_node.an_type != "Unknown":
+                conn_value_type = schema.node_schema[parsed_node.an_type]["connections"][conn]["value_type"]
+
+            var sub_parse_result: = _inner_parse_asset_node_deep(conn_nodes_data[conn_node_idx], conn_value_type)
             all_nodes.append_array(sub_parse_result["all_nodes"])
             parsed_node.set_connection(conn, conn_node_idx, sub_parse_result["base"])
 
@@ -201,39 +220,16 @@ func _inner_parse_asset_node_deep(asset_node_data: Dictionary) -> Dictionary:
     
     return {"base": parsed_node, "all_nodes": all_nodes}
 
-func register_typeless_subnodes_for_tree(tree_root: HyAssetNode) -> void:
-    for conn in tree_root.connections.keys():
-        for sub_index in tree_root.num_connected_asset_nodes(conn):
-            var sub_node: = tree_root.get_connected_node(conn, sub_index)
-            if sub_node.an_type == "<NO TYPE>":
-                var name_pattern: = "%s|%s" % [tree_root.an_type, conn]
-                if override_types.has(name_pattern):
-                    sub_node.an_type = override_types[name_pattern]
-                elif tree_root.an_type == "<NO TYPE>":
-                    print_debug("Unable to register typeless subnode for typeless parent: %s | %s" % [tree_root.an_node_id, conn])
-                else:
-                    register_typeless_subnode(tree_root, conn)
-            register_typeless_subnodes_for_tree(sub_node)
-
-func parse_asset_node_deep(asset_node_data: Dictionary) -> Dictionary:
-    var res: = _inner_parse_asset_node_deep(asset_node_data)
-    register_typeless_subnodes_for_tree(res["base"])
+func parse_asset_node_deep(asset_node_data: Dictionary, output_value_type: String = "", base_node_type: String = "") -> Dictionary:
+    var res: = _inner_parse_asset_node_deep(asset_node_data, output_value_type, base_node_type)
     return res
 
 func parse_root_asset_node(base_node: Dictionary) -> void:
-    if not base_node.has("Type"):
-        base_node["Type"] = get_fallback_root_type(base_node)
-    else:
-        prints("Root node has a Type key (unexpected): %s fallback type would be: %s" % [base_node["Type"], get_fallback_root_type(base_node)])
-
-    var parse_result: = parse_asset_node_deep(base_node)
-    root_node = parse_result["base"]
-    all_asset_nodes = parse_result["all_nodes"]
-    
-    if not root_node.raw_tree_data.has("$NodeEditorMetadata") or not root_node.raw_tree_data["$NodeEditorMetadata"] is Dictionary:
+    hy_workspace_id = "NONE"
+    if not base_node.has("$NodeEditorMetadata") or not base_node["$NodeEditorMetadata"] is Dictionary:
         print_debug("Root node does not have $NodeEditorMetadata")
     else:
-        var meta_data: = root_node.raw_tree_data["$NodeEditorMetadata"] as Dictionary
+        var meta_data: = base_node["$NodeEditorMetadata"] as Dictionary
 
         for node_id in meta_data.get("$Nodes", {}).keys():
             asset_node_meta[node_id] = meta_data["$Nodes"][node_id]
@@ -244,6 +240,21 @@ func parse_root_asset_node(base_node: Dictionary) -> void:
             all_asset_nodes.append_array(floating_parse_result["all_nodes"])
         
         hy_workspace_id = meta_data.get("$WorkspaceID", "NONE")
+
+    if hy_workspace_id == "NONE" and base_node.has("$WorkspaceID"):
+        hy_workspace_id = base_node["$WorkspaceID"]
+
+    var root_node_type: = "Unknown"
+    if hy_workspace_id == "NONE":
+        print_debug("No workspace ID found in root node or editor metadata")
+    else:
+        root_node_type = schema.resolve_asset_node_type(base_node.get("Type", "NO_TYPE_KEY"), "ROOT|%s" % hy_workspace_id)
+        print("Root node type: %s" % root_node_type)
+
+    var parse_result: = parse_asset_node_deep(base_node, "", root_node_type)
+    root_node = parse_result["base"]
+    all_asset_nodes = parse_result["all_nodes"]
+        
     
     loaded = true
 
@@ -353,13 +364,12 @@ func new_graph_node(asset_node: HyAssetNode) -> CustomGraphNode:
     graph_node.resizable = true
     graph_node.ignore_invalid_connection_type = true
 
-    if asset_node.an_type == "<NO TYPE>":
-        graph_node.title = "()" if asset_node.an_name == "<NO NAME>" else "(%s)" % asset_node.an_name
-    else:
-        if asset_node.an_name == "<NO NAME>":
-            graph_node.title = schema.get_node_type_default_name(asset_node.an_type)
-        else:
-            graph_node.title = asset_node.an_name
+    # Get title from metadata if available
+    var node_meta = asset_node_meta.get(asset_node.an_node_id, {})
+    if node_meta.has("$Title"):
+        asset_node.an_name = node_meta["$Title"]
+    
+    graph_node.title = asset_node.an_name
     
     var num_inputs: = 1
     if asset_node.an_type in no_left_types:
@@ -415,15 +425,19 @@ func new_graph_node(asset_node: HyAssetNode) -> CustomGraphNode:
                 slot_node.text = connection_names[i]
     
     if use_json_positions:
-        var meta_pos: = get_node_position_from_meta(asset_node.an_node_id)
+        var meta_pos: = get_node_position_from_meta(asset_node.an_node_id) * json_positions_scale
         graph_node.position_offset = meta_pos - relative_root_position
     
     return graph_node
 
 func get_fallback_root_type(root_node_data: Dictionary) -> String:
-    if not root_node_data.has("$WorkspaceID"):
+    if not root_node_data.has("$NodeEditorMetadata"):
         return "__Root"
-    if not root_node_data["$WorkspaceID"] in workspace_root_types:
-        print_debug("Workspace ID %s not found in workspace_root_types overrides" % root_node_data["$WorkspaceID"])
+    var metadata: = root_node_data["$NodeEditorMetadata"] as Dictionary
+    if not metadata.has("$WorkspaceID"):
         return "__Root"
-    return workspace_root_types[root_node_data["$WorkspaceID"]]
+    var workspace_id := str(metadata["$WorkspaceID"])
+    if not schema.workspace_root_types.has(workspace_id):
+        print_debug("Workspace ID %s not found in workspace_root_types overrides" % workspace_id)
+        return "__Root"
+    return schema.workspace_root_types[workspace_id]
