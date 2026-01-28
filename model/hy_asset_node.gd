@@ -5,6 +5,9 @@ extends Resource
 @export var an_name: String = ""
 @export var an_type: String = ""
 
+@export var title: String = ""
+@export var comment: String = ""
+
 @export var connections: Dictionary[String, Variant] = {}
 @export var connection_list: Array[String] = []
 @export var has_inner_asset_nodes: bool = false
@@ -14,6 +17,8 @@ extends Resource
 @export var settings: Dictionary = {}
 
 @export var raw_tree_data: Dictionary = {}
+
+@export var other_metadata: Dictionary = {}
 
 static var special_keys: Array[String] = ["Type"]
 
@@ -181,3 +186,57 @@ func _get_connected_node_list(conn_name: String) -> Array[HyAssetNode]:
     for i in range(connected_node_counts[conn_name]):
         node_list.append(connected_asset_nodes["%s:%d" % [conn_name, i]])
     return node_list
+
+func serialize_me(schema: AssetNodesSchema) -> Dictionary:
+    if not has_inner_asset_nodes:
+        print_debug("Serializing unpopulated asset node (%s)" % an_node_id)
+        return raw_tree_data.duplicate(true)
+    
+    var serialized_data: Dictionary = {"$NodeId": an_node_id}
+    if comment:
+        serialized_data["$Comment"] = comment
+    
+    for other_key in other_metadata.keys():
+        serialized_data[other_key] = other_metadata[other_key]
+
+    if not an_type or an_type == "Unknown" or not schema.node_schema.has(an_type):
+        print_debug("Warning: Serializing an asset node with unknown type: %s (%s)" % [an_type, an_node_id])
+        serialized_data["no_schema"] = true
+        if "Type" in raw_tree_data:
+            serialized_data["Type"] = raw_tree_data["Type"]
+        for setting_key in settings.keys():
+            serialized_data[setting_key] = settings[setting_key]
+        for conn_name in connection_list:
+            var num_connected: = num_connected_asset_nodes(conn_name)
+            if num_connected == 0:
+                continue
+
+            if num_connected > 1:
+                serialized_data[conn_name] = []
+                for connected_an in get_all_connected_nodes(conn_name):
+                    serialized_data[conn_name].append(connected_an.serialize_me(schema))
+            else:
+                serialized_data[conn_name] = get_connected_node(conn_name, 0).serialize_me(schema)
+    else:
+        var node_schema: = schema.node_schema[an_type]
+        var serialized_type_key: Variant = schema.node_types.find_key(an_type)
+        if serialized_type_key and serialized_type_key.split("|", false).size() > 1:
+            serialized_data["Type"] = serialized_type_key.split("|")[1]
+        for setting_key in node_schema.get("settings", {}).keys():
+            if node_schema["settings"][setting_key]["gd_type"] == TYPE_STRING:
+                if not settings[setting_key]:
+                    continue
+            serialized_data[setting_key] = settings[setting_key]
+        for conn_name in node_schema.get("connections", {}).keys():
+            var num_connected: = num_connected_asset_nodes(conn_name)
+            if num_connected == 0:
+                continue
+            var is_multi: bool = node_schema["connections"][conn_name].get("multi", false)
+            if is_multi:
+                serialized_data[conn_name] = []
+                for connected_an in get_all_connected_nodes(conn_name):
+                    serialized_data[conn_name].append(connected_an.serialize_me(schema))
+            else:
+                serialized_data[conn_name] = get_connected_node(conn_name, 0).serialize_me(schema)
+
+    return serialized_data

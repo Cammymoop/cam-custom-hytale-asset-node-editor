@@ -1,0 +1,11 @@
+[gd_scene format=3 uid="uid://cpyyo6aabsii3"]
+
+[node name="Line2D" type="Line2D"]
+position = Vector2(195, 165)
+points = PackedVector2Array(19, -5, 49, -15, 77, -21, 110, -8, 154, 12, 193, -1)
+width = 3.0
+default_color = Color(0.8678041, 0.28480747, 0.26706934, 1)
+joint_mode = 2
+begin_cap_mode = 2
+end_cap_mode = 2
+antialiased = true

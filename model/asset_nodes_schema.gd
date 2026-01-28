@@ -1325,7 +1325,7 @@ func get_id_prefix_for_node_type(node_type: String) -> String:
     
     # DelimiterFieldFunctionMP (single-node value type)
     "DelimiterFieldFunctionMP": {
-        "display_name": "Delimiter (Field Function MP)",
+        "display_name": "Delimiter",
         "output_value_type": "DelimiterFieldFunctionMP",
         "settings": {
             "From": { "gd_type": TYPE_FLOAT, "default_value": 0.0 },
@@ -1339,7 +1339,7 @@ func get_id_prefix_for_node_type(node_type: String) -> String:
     # Delimiter for Positions Cell Noise Density Return Type (single-node value type)
     "DelimiterDensityPCNReturnType": {
 		"id_prefix_override": "Delimiter.DensityPCNReturnType",
-        "display_name": "Delimiter (Density Cell Noise Return Type)",
+        "display_name": "Delimiter",
         "output_value_type": "DelimiterDensityPCNReturnType",
         "settings": {
             "From": { "gd_type": TYPE_FLOAT, "default_value": -1.0 },
@@ -1423,7 +1423,12 @@ func get_id_prefix_for_node_type(node_type: String) -> String:
     # Positions Cell Noise Distance Function nodes
     "EuclideanPCNDistanceFunction": {
 		"id_prefix_override": "PCNDistanceFunction",
-        "display_name": "Euclidean Distance Function",
+        "display_name": "Euclidean",
+        "output_value_type": "PCNDistanceFunction",
+    },
+    "ManhattanPCNDistanceFunction": {
+		"id_prefix_override": "PCNDistanceFunction",
+        "display_name": "Manhattan",
         "output_value_type": "PCNDistanceFunction",
     },
     
@@ -1438,7 +1443,7 @@ func get_id_prefix_for_node_type(node_type: String) -> String:
     },
     "DensityDelimitedEnvironmentProvider": {
 		"id_prefix_override": "DensityDelimited.EnvironmentProvider",
-        "display_name": "Density Delimited Environment Provider",
+        "display_name": "Density Delimited Env",
         "output_value_type": "EnvironmentProvider",
         "connections": {
             "Density": { "value_type": "Density", "multi": false },
@@ -1455,7 +1460,7 @@ func get_id_prefix_for_node_type(node_type: String) -> String:
     },
     "DensityDelimitedTintProvider": {
 		"id_prefix_override": "DensityDelimited.TintProvider",
-        "display_name": "Density Delimited Tint Provider",
+        "display_name": "Density Delimited Tint",
         "output_value_type": "TintProvider",
         "connections": {
             "Density": { "value_type": "Density", "multi": false },
@@ -1465,7 +1470,7 @@ func get_id_prefix_for_node_type(node_type: String) -> String:
     
     # Positions Cell Noise Return Type nodes
     "DensityPCNReturnType": {
-        "display_name": "Density Cell Noise Return Type",
+        "display_name": "Density Cell Noise",
         "output_value_type": "PCNReturnType",
         "settings": {
             "DefaultValue": { "gd_type": TYPE_FLOAT, "default_value": 0.0 },
@@ -1476,7 +1481,7 @@ func get_id_prefix_for_node_type(node_type: String) -> String:
         }
     },
     "CellValuePCNReturnType": {
-        "display_name": "Cell Value Cell Noise Return Type",
+        "display_name": "Cell Value Cell Noise",
         "output_value_type": "PCNReturnType",
         "settings": {
             "DefaultValue": { "gd_type": TYPE_FLOAT, "default_value": 0.0 },
@@ -1486,40 +1491,35 @@ func get_id_prefix_for_node_type(node_type: String) -> String:
         }
     },
     "DistancePCNReturnType": {
-        "display_name": "Distance PCN Return Type",
+        "display_name": "Distance Cell Noise",
         "output_value_type": "PCNReturnType",
     },
     "Distance2PCNReturnType": {
-        "display_name": "Distance2 PCN Return Type",
+        "display_name": "Distance2 Cell Noise",
         "output_value_type": "PCNReturnType",
     },
     "Distance2AddPCNReturnType": {
-        "display_name": "Distance2Add PCN Return Type",
+        "display_name": "Distance2Add Cell Noise",
         "output_value_type": "PCNReturnType",
     },
     "Distance2SubPCNReturnType": {
-        "display_name": "Distance2Sub PCN Return Type",
+        "display_name": "Distance2Sub Cell Noise",
         "output_value_type": "PCNReturnType",
     },
     "Distance2MulPCNReturnType": {
-        "display_name": "Distance2Mul PCN Return Type",
+        "display_name": "Distance2Mul Cell Noise",
         "output_value_type": "PCNReturnType",
     },
     "Distance2DivPCNReturnType": {
-        "display_name": "Distance2Div PCN Return Type",
+        "display_name": "Distance2Div Cell Noise",
         "output_value_type": "PCNReturnType",
     },
     "CurvePCNReturnType": {
-        "display_name": "Curve PCN Return Type",
+        "display_name": "Curve Cell Noise",
         "output_value_type": "PCNReturnType",
         "connections": {
             "Curve": { "value_type": "Curve", "multi": false },
         }
-    },
-    "ManhattanPCNDistanceFunction": {
-		"id_prefix_override": "PCNDistanceFunction",
-        "display_name": "Manhattan Distance Function",
-        "output_value_type": "PCNDistanceFunction",
     },
     
     # Terrain nodes
@@ -2078,7 +2078,7 @@ func get_id_prefix_for_node_type(node_type: String) -> String:
     },
     "SMDelimiterAssignments": {
 		"id_prefix_override": "Delimiter.Sandwich.Assignments",
-        "display_name": "Delimiter (Sandwich Assignments)",
+        "display_name": "Delimiter",
         "output_value_type": "SMDelimiterAssignments",
         "settings": {
             "MaxY": { "gd_type": TYPE_FLOAT, "default_value": 100.0 },
@@ -2092,7 +2092,7 @@ func get_id_prefix_for_node_type(node_type: String) -> String:
     },
     "FFDelimiterAssignments": {
 		"id_prefix_override": "Delimiter.FieldFunction.Assignments",
-        "display_name": "Delimiter (Field Function Assignments)",
+        "display_name": "Delimiter",
         "output_value_type": "FFDelimiterAssignments",
         "settings": {
             "MaxY": { "gd_type": TYPE_FLOAT, "default_value": 100.0 },
@@ -2106,7 +2106,7 @@ func get_id_prefix_for_node_type(node_type: String) -> String:
     },
     "DelimiterEnvironment": {
 		"id_prefix_override": "Delimiter.DensityDelimited.EnvironmentProvider",
-        "display_name": "Delimiter (Environment)",
+        "display_name": "Delimiter",
         "output_value_type": "DelimiterEnvironment",
         "connections": {
             "Environment": { "value_type": "EnvironmentProvider", "multi": false },
@@ -2115,7 +2115,7 @@ func get_id_prefix_for_node_type(node_type: String) -> String:
     },
     "DelimiterTint": {
 		"id_prefix_override": "Delimiter.DensityDelimited.TintProvider",
-        "display_name": "Delimiter (Tint)",
+        "display_name": "Delimiter",
         "output_value_type": "DelimiterTint",
         "connections": {
             "Tint": { "value_type": "TintProvider", "multi": false },
@@ -2133,7 +2133,7 @@ func get_id_prefix_for_node_type(node_type: String) -> String:
     },
     "DelimiterPattern": {
 		"id_prefix_override": "Delimiter.FieldFunction.Pattern",
-        "display_name": "Delimiter (Pattern)",
+        "display_name": "Delimiter",
         "output_value_type": "DelimiterPattern",
         "settings": {
             "Min": { "gd_type": TYPE_FLOAT, "default_value": 0.0 },

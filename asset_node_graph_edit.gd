@@ -1,6 +1,7 @@
 extends GraphEdit
 class_name AssetNodeGraphEdit
 
+@export var save_formatted_json: = true
 @export_file_path("*.json") var test_json_file: String = ""
 
 @export var schema: AssetNodesSchema
@@ -11,6 +12,7 @@ var loaded: = false
 var hy_workspace_id: String = ""
 
 var all_asset_nodes: Array[HyAssetNode] = []
+var all_asset_node_ids: Array[String] = []
 var floating_tree_roots: Array[HyAssetNode] = []
 var root_node: HyAssetNode = null
 
@@ -23,15 +25,13 @@ var asset_node_meta: Dictionary[String, Dictionary] = {}
 ]
 
 
-var typeless_subnode_registry: Dictionary[String, Array] = {}
-
 var gn_lookup: Dictionary[String, GraphNode] = {}
 var an_lookup: Dictionary[String, HyAssetNode] = {}
 
-var more_type_names: Dictionary[String, int] = {
-    "Single": 1,
-    "Multi": 2,
-}
+var more_type_names: Array[String] = [
+    "Single",
+    "Multi",
+]
 var type_id_lookup: Dictionary[String, int] = {}
 
 @export var use_json_positions: = true
@@ -49,48 +49,171 @@ var temp_x_elements: = 10
 
 @export var verbose: = false
 
+@onready var cur_zoom_level: = zoom
+@onready var grid_logical_enabled: = show_grid
+
 var copied_nodes: Array[GraphNode] = []
 
 var special_handling_types: Array[String] = [
     "ManualCurve",
 ]
 
+var undo_manager: UndoRedo = UndoRedo.new()
+var multi_connection_change: bool = false
+var cur_added_connections: Array[Dictionary] = []
+var cur_removed_connections: Array[Dictionary] = []
+var moved_nodes_positions: Dictionary[GraphNode, Vector2] = {}
+
 func _ready() -> void:
-    right_disconnects = true
     #add_valid_left_disconnect_type(1)
+    begin_node_move.connect(on_begin_node_move)
+    end_node_move.connect(on_end_node_move)
     
     connection_request.connect(_connection_request)
     disconnection_request.connect(_disconnection_request)
+
+    duplicate_nodes_request.connect(_duplicate_request)
+    copy_nodes_request.connect(_copy_nodes)
+    cut_nodes_request.connect(_cut_nodes)
+    paste_nodes_request.connect(_paste_request)
     delete_nodes_request.connect(_delete_request)
     
-    for extra_type_name in more_type_names.keys():
-        type_names[more_type_names[extra_type_name]] = extra_type_name
+    var menu_hbox: = get_menu_hbox()
+    var grid_toggle_btn: = menu_hbox.get_child(4) as Button
+    grid_toggle_btn.toggled.connect(on_grid_toggled.bind(grid_toggle_btn))
+    
+    for val_type_name in schema.value_types:
+        var val_type_idx: = type_names.size()
+        type_names[val_type_idx] = val_type_name
+        add_valid_connection_type(val_type_idx, val_type_idx)
+        #add_valid_left_disconnect_type(val_type_idx)
+
+    for extra_type_name in more_type_names:
+        var type_idx: = type_names.size()
+        type_names[type_idx] = extra_type_name
+        #add_valid_left_disconnect_type(type_idx)
+
     for type_id in type_names.keys():
         type_id_lookup[type_names[type_id]] = type_id
 
     #cut_nodes_request.connect(_cut_nodes)
     if test_json_file:
-        var file = FileAccess.open(test_json_file, FileAccess.READ)
-        parsed_json_data = JSON.parse_string(file.get_as_text())
-        if not parsed_json_data:
-            print("Error parsing JSON %s" % test_json_file)
-            return
-        parse_root_asset_node(parsed_json_data)
-        create_graph_from_parsed_data()
-        loaded = true
-        prints("Loaded %s, Workspace ID: %s" % [test_json_file, hy_workspace_id])
+        load_json_file(test_json_file)
     else:
         print("No test JSON file specified")
+
+func _process(_delta: float) -> void:
+    if Input.is_action_just_pressed("ui_undo"):
+        print("Undo pressed")
+        if undo_manager.has_undo():
+            print("Undoing")
+            undo_manager.undo()
+    if Input.is_action_just_pressed("ui_redo"):
+        print("Redo pressed")
+        if undo_manager.has_redo():
+            undo_manager.redo()
     
-    setup_value_type_colors()
+    if cur_zoom_level != zoom:
+        on_zoom_changed()
+    
+func _input(event: InputEvent) -> void:
+    if event is InputEventMouse:
+        handle_mouse_event(event as InputEventMouse)
 
 func _connection_request(from_gn_name: StringName, from_port: int, to_gn_name: StringName, to_port: int) -> void:
-    #prints("Connection request:", from_gn_name, from_port, to_gn_name, to_port)
+    prints("Connection request:", from_gn_name, from_port, to_gn_name)
+    _add_connection(from_gn_name, from_port, to_gn_name, to_port)
+
+func add_multiple_connections(conns_to_add: Array[Dictionary], with_undo: bool = true) -> void:
+    prints("adding multiple connections (%d) undoable: %s" % [conns_to_add.size(), with_undo])
+    var self_multi: = not multi_connection_change
+    multi_connection_change = true
+    for conn_to_add in conns_to_add:
+        add_connection(conn_to_add, with_undo)
+
+    if self_multi:
+        if with_undo:
+            create_undo_connection_change_step()
+        multi_connection_change = false
+
+func add_connection(connection_info: Dictionary, with_undo: bool = true) -> void:
+    _add_connection(connection_info["from_node"], connection_info["from_port"], connection_info["to_node"], connection_info["to_port"], with_undo)
+
+func _add_connection(from_gn_name: StringName, from_port: int, to_gn_name: StringName, to_port: int, with_undo: bool = true) -> void:
+    prints("Adding connection:", from_gn_name, from_port, to_gn_name, "undoable:", with_undo)
+    var from_gn: GraphNode = get_node(NodePath(from_gn_name))
+    var to_gn: GraphNode = get_node(NodePath(to_gn_name))
+    var from_an: HyAssetNode = an_lookup.get(from_gn.get_meta("hy_asset_node_id", ""))
+    var to_an: HyAssetNode = an_lookup.get(to_gn.get_meta("hy_asset_node_id", ""))
+    if from_an.an_type not in schema.node_schema:
+        print_debug("Warning: From node type %s not found in schema" % from_an.an_type)
+        connect_node(from_gn_name, from_port, to_gn_name, to_port)
+        return
+
+    var conn_name: String = from_an.connection_list[from_port]
+    var connect_is_multi: bool = schema.node_schema[from_an.an_type]["connections"][conn_name].get("multi", false)
+    if connect_is_multi or from_an.num_connected_asset_nodes(conn_name) == 0:
+        from_an.append_node_to_connection(conn_name, to_an)
+    else:
+        var prev_connected_node: HyAssetNode = from_an.get_connected_node(conn_name, 0)
+        if prev_connected_node and gn_lookup.has(prev_connected_node.an_node_id):
+            _remove_connection(from_gn_name, from_port, prev_connected_node.an_node_id, 0)
+        from_an.set_connection(conn_name, 0, to_an)
+    
+    if to_an in floating_tree_roots:
+        floating_tree_roots.erase(to_an)
+
+    if with_undo:
+        cur_added_connections.append({
+            "from_node": from_gn_name,
+            "from_port": from_port,
+            "to_node": to_gn_name,
+            "to_port": to_port,
+        })
     connect_node(from_gn_name, from_port, to_gn_name, to_port)
+    if with_undo and not multi_connection_change:
+        print("with undo and not multi_connection_change, now creating undo connection change step")
+        create_undo_connection_change_step()
 
 func _disconnection_request(from_gn_name: StringName, from_port: int, to_gn_name: StringName, to_port: int) -> void:
-    #prints("Disconnection request:", from_gn_name, from_port, to_gn_name, to_port)
+    prints("Disconnection request:", from_gn_name, from_port, to_gn_name)
+    _remove_connection(from_gn_name, from_port, to_gn_name, to_port)
+
+func remove_multiple_connections(conns_to_remove: Array[Dictionary], with_undo: bool = true) -> void:
+    var self_multi: = not multi_connection_change
+    multi_connection_change = true
+    for conn_to_remove in conns_to_remove:
+        remove_connection(conn_to_remove, with_undo)
+
+    if self_multi:
+        if with_undo:
+            create_undo_connection_change_step()
+        multi_connection_change = false
+
+func remove_connection(connection_info: Dictionary, with_undo: bool = true) -> void:
+    _remove_connection(connection_info["from_node"], connection_info["from_port"], connection_info["to_node"], connection_info["to_port"], with_undo)
+
+func _remove_connection(from_gn_name: StringName, from_port: int, to_gn_name: StringName, to_port: int, with_undo: bool = true) -> void:
+    prints("Removing connection:", from_gn_name, from_port, to_gn_name)
     disconnect_node(from_gn_name, from_port, to_gn_name, to_port)
+
+    var from_gn: GraphNode = get_node(NodePath(from_gn_name))
+    var to_gn: GraphNode = get_node(NodePath(to_gn_name))
+    var from_an: HyAssetNode = an_lookup.get(from_gn.get_meta("hy_asset_node_id", ""))
+    var from_connection_name: String = from_an.connection_list[from_port]
+    var to_an: HyAssetNode = an_lookup.get(to_gn.get_meta("hy_asset_node_id", ""))
+    from_an.remove_node_from_connection(from_connection_name, to_an)
+    
+    if with_undo:
+        cur_removed_connections.append({
+            "from_node": from_gn_name,
+            "from_port": from_port,
+            "to_node": to_gn_name,
+            "to_port": to_port,
+        })
+    floating_tree_roots.append(to_an)
+    if with_undo and not multi_connection_change:
+        create_undo_connection_change_step()
 
 func remove_asset_node(asset_node: HyAssetNode) -> void:
     all_asset_nodes.erase(asset_node)
@@ -135,14 +258,40 @@ func get_selected_gns() -> Array[GraphNode]:
             selected_gns.append(c)
     return selected_gns
 
+func _duplicate_request() -> void:
+    pass
+
+func _cut_request() -> void:
+    pass
+
 func _cut_nodes() -> void:
     var selected_gns: Array[GraphNode] = get_selected_gns()
     copied_nodes = selected_gns
     for gn in selected_gns:
         remove_child(gn)
 
+func _copy_request() -> void:
+    pass
+
 func _copy_nodes() -> void:
     copied_nodes = get_selected_gns()
+
+func _paste_request() -> void:
+    pass
+
+func clear_graph() -> void:
+    all_asset_nodes.clear()
+    all_asset_node_ids.clear()
+    floating_tree_roots.clear()
+    root_node = null
+    gn_lookup.clear()
+    an_lookup.clear()
+    asset_node_meta.clear()
+    for child in get_children():
+        if child is GraphNode:
+            remove_child(child)
+            child.queue_free()
+    undo_manager.clear_history()
 
 func create_graph_from_parsed_data() -> void:
     await get_tree().create_timer(0.1).timeout
@@ -172,9 +321,6 @@ func print_asset_node_list() -> void:
     if more_than_ten:
         prints("... (Total: %d)" % all_asset_nodes.size())
     
-    for parent_type in typeless_subnode_registry.keys():
-        prints("Typeless subnode registry: %s -> %s" % [parent_type, typeless_subnode_registry[parent_type]])
-
 func parse_asset_node_shallow(asset_node_data: Dictionary, output_value_type: String = "", known_node_type: String = "") -> HyAssetNode:
     if not asset_node_data:
         print_debug("Asset node data is empty")
@@ -264,6 +410,7 @@ func parse_asset_node_deep(asset_node_data: Dictionary, output_value_type: Strin
 
 func parse_root_asset_node(base_node: Dictionary) -> void:
     hy_workspace_id = "NONE"
+    var parsed_node_count: = 0
     if not base_node.has("$NodeEditorMetadata") or not base_node["$NodeEditorMetadata"] is Dictionary:
         print_debug("Root node does not have $NodeEditorMetadata")
     else:
@@ -275,7 +422,11 @@ func parse_root_asset_node(base_node: Dictionary) -> void:
         for floating_tree in meta_data.get("$FloatingNodes", []):
             var floating_parse_result: = parse_asset_node_deep(floating_tree)
             floating_tree_roots.append(floating_parse_result["base"])
+            parsed_node_count += floating_parse_result["all_nodes"].size()
+            print("Floating tree parsed, %d nodes" % floating_parse_result["all_nodes"].size(), " (total: %d)" % parsed_node_count)
             all_asset_nodes.append_array(floating_parse_result["all_nodes"])
+            for an in floating_parse_result["all_nodes"]:
+                all_asset_node_ids.append(an.an_node_id)
         
         hy_workspace_id = meta_data.get("$WorkspaceID", "NONE")
 
@@ -291,7 +442,11 @@ func parse_root_asset_node(base_node: Dictionary) -> void:
 
     var parse_result: = parse_asset_node_deep(base_node, "", root_node_type)
     root_node = parse_result["base"]
-    all_asset_nodes = parse_result["all_nodes"]
+    all_asset_nodes.append_array(parse_result["all_nodes"])
+    parsed_node_count += parse_result["all_nodes"].size()
+    print("Root node parsed, %d nodes" % parse_result["all_nodes"].size(), " (total: %d)" % parsed_node_count)
+    for an in parse_result["all_nodes"]:
+        all_asset_node_ids.append(an.an_node_id)
         
     
     loaded = true
@@ -304,20 +459,6 @@ func check_for_asset_nodes(val: Variant) -> Variant:
         if val.size() == 0 or val[0] is Dictionary and val[0].has("$NodeId"):
             return val
     return null
-
-func register_typeless_subnode(parent_node: HyAssetNode, connection_name: String) -> void:
-    if parent_node.an_type == "<NO TYPE>":
-        print("Register typeless subnode failed, parent node has no type :: connection: %s" % [connection_name])
-        if verbose:
-            prints("Parent node data: %s" % [parent_node.raw_tree_data])
-        return
-    
-    if not typeless_subnode_registry.has(parent_node.an_type):
-        var new_array: Array[String] = []
-        typeless_subnode_registry[parent_node.an_type] = new_array
-    
-    if not typeless_subnode_registry[parent_node.an_type].has(connection_name):
-        typeless_subnode_registry[parent_node.an_type].append(connection_name)
 
 
 func make_graph_stuff() -> void:
@@ -334,7 +475,7 @@ func make_graph_stuff() -> void:
         for new_gn in new_graph_nodes:
             if not use_json_positions:
                 new_gn.position_offset = Vector2(0, -500)
-            add_child(new_gn)
+            add_child(new_gn, true)
             if new_gn.size.x < gn_min_width:
                 new_gn.size.x = gn_min_width
         
@@ -424,7 +565,6 @@ func new_graph_node(asset_node: HyAssetNode, root_asset_node: HyAssetNode) -> Cu
     var graph_node: CustomGraphNode = null
     var is_special: = should_be_special_gn(asset_node)
     if is_special:
-        print_debug("Making special GN for asset node type %s" % asset_node.an_type)
         graph_node = special_gn_factory.make_special_gn(root_asset_node, asset_node)
     else:
         graph_node = CustomGraphNode.new()
@@ -441,7 +581,8 @@ func new_graph_node(asset_node: HyAssetNode, root_asset_node: HyAssetNode) -> Cu
     gn_lookup[asset_node.an_node_id] = graph_node
     
     graph_node.resizable = true
-    graph_node.ignore_invalid_connection_type = true
+    if not output_type:
+        graph_node.ignore_invalid_connection_type = true
 
     graph_node.title = asset_node.an_name
     
@@ -452,27 +593,52 @@ func new_graph_node(asset_node: HyAssetNode, root_asset_node: HyAssetNode) -> Cu
         if asset_node.an_type in no_left_types:
             num_inputs = 0
         
-        var connection_names: = asset_node.connections.keys()
+        var node_schema: Dictionary = {}
+        if asset_node.an_type and asset_node.an_type != "Unknown":
+            node_schema = schema.node_schema[asset_node.an_type]
+        
+        var connection_names: Array
+        var connection_types: Array[int]
+        if node_schema:
+            var type_connections: Dictionary = node_schema.get("connections", {})
+            connection_names = type_connections.keys()
+            for conn_name in connection_names:
+                connection_types.append(type_id_lookup[type_connections[conn_name]["value_type"]])
+        else:
+            connection_names = asset_node.connections.keys()
+            connection_types.resize(connection_names.size())
+            connection_types.fill(type_id_lookup["Single"])
         var num_outputs: = connection_names.size()
         
-        var setting_names: = asset_node.settings.keys()
+        var setting_names: Array
+        if node_schema:
+            setting_names = node_schema.get("settings", {}).keys()
+        else:
+            setting_names = asset_node.settings.keys()
         var num_settings: = setting_names.size()
         
         var first_setting_slot: = maxi(num_inputs, num_outputs)
         
         for i in maxi(num_inputs, num_outputs) + num_settings:
             if i >= first_setting_slot:
+                var setting_name: String = setting_names[i - first_setting_slot]
+
                 var slot_node: = HBoxContainer.new()
                 slot_node.name = "Slot%d" % i
                 var s_name: = Label.new()
                 s_name.name = "SettingName"
-                s_name.text = "%s:" % setting_names[i - first_setting_slot]
+                s_name.text = "%s:" % setting_name
                 s_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
                 slot_node.add_child(s_name, true)
 
                 var s_edit: Control
-                var setting_value: Variant = asset_node.settings[setting_names[i - first_setting_slot]]
-                var setting_type: int = typeof(setting_value)
+                var setting_value: Variant
+                var setting_type: int
+                if setting_name in asset_node.settings:
+                    setting_value = asset_node.settings[setting_name]
+                else:
+                    setting_value = schema.node_schema[asset_node.an_type]["settings"][setting_name].get("default_value", 0)
+
                 if setting_type == TYPE_BOOL:
                     s_edit = CheckBox.new()
                     s_edit.name = "SettingEdit"
@@ -494,10 +660,10 @@ func new_graph_node(asset_node: HyAssetNode, root_asset_node: HyAssetNode) -> Cu
                 graph_node.add_child(slot_node, true)
                 if i < num_inputs:
                     graph_node.set_slot_enabled_left(i, true)
-                    graph_node.set_slot_type_left(i, type_id_lookup["Single"])
+                    graph_node.set_slot_type_left(i, type_id_lookup[output_type])
                 if i < num_outputs:
                     graph_node.set_slot_enabled_right(i, true)
-                    graph_node.set_slot_type_right(i, type_id_lookup["Single"])
+                    graph_node.set_slot_type_right(i, connection_types[i])
                     slot_node.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
                     slot_node.text = connection_names[i]
     
@@ -510,11 +676,273 @@ func new_graph_node(asset_node: HyAssetNode, root_asset_node: HyAssetNode) -> Cu
     return graph_node
 
 
-func setup_value_type_colors() -> void:
-    for value_type_name in schema.value_types:
-        var value_type_index: int = schema.value_types.find(value_type_name) + 5
-        type_names[value_type_index] = value_type_name
+var connection_cut_active: = false
+var connection_cut_start_point: Vector2 = Vector2(0, 0)
+var connection_cut_line: Line2D = null
+var max_connection_cut_points: = 100000
 
-        var theme_color_name: String = TypeColors.get_color_for_type(value_type_name)
-        if not ThemeColorVariants.theme_colors.has(theme_color_name):
-            continue
+func start_connection_cut(at_global_pos: Vector2) -> void:
+    prints("Starting connection cut")
+    connection_cut_active = true
+    connection_cut_start_point = at_global_pos
+    
+    connection_cut_line = preload("res://ui/connection_cutting_line.tscn").instantiate() as Line2D
+    connection_cut_line.clear_points()
+    connection_cut_line.add_point(Vector2.ZERO)
+    connection_cut_line.z_index = 10
+    get_parent().add_child(connection_cut_line)
+    connection_cut_line.global_position = at_global_pos
+
+func add_connection_cut_point(at_global_pos: Vector2) -> void:
+    if not connection_cut_line or connection_cut_line.points.size() >= max_connection_cut_points:
+        return
+    connection_cut_line.add_point(at_global_pos - connection_cut_start_point)
+
+func cancel_connection_cut() -> void:
+    connection_cut_active = false
+    if connection_cut_line:
+        get_parent().remove_child(connection_cut_line)
+        connection_cut_line = null
+
+
+func do_connection_cut() -> void:
+    prints("cutting connections (%d points)" % connection_cut_line.points.size())
+    const cut_radius: = 5.0
+    const MAX_CUTS_PER_STEP: = 50
+    
+    #var check_point_visualizer: Control
+    #if _first_cut_:
+    #    check_point_visualizer = ColorRect.new()
+    #    check_point_visualizer.color = Color.LAVENDER
+    #    check_point_visualizer.z_index = 10
+    #    check_point_visualizer.size = Vector2(4, 4)
+    
+    multi_connection_change = true
+    
+    var num_cut: = 0
+
+    var vp_rect: = get_viewport_rect()
+    var prev_cut_point: = connection_cut_start_point
+    for cut_point in connection_cut_line.points:
+        var cut_global_pos: = connection_cut_line.to_global(cut_point)
+        var check_points: = [cut_global_pos]
+
+        var iteration_dist: = (cut_global_pos - prev_cut_point).length()
+        if iteration_dist > cut_radius:
+            var interpolation_steps: = int(iteration_dist / cut_radius)
+            
+            for i in interpolation_steps:
+                check_points.append(prev_cut_point.lerp(cut_global_pos, (i + 1) / float(interpolation_steps)))
+        
+        for check_point in check_points:
+            if not vp_rect.has_point(check_point):
+                continue
+            #if _first_cut_:
+            #    var copy: = check_point_visualizer.duplicate()
+            #    get_parent().add_child(copy)
+            #    copy.global_position = check_point
+            for i in MAX_CUTS_PER_STEP:
+                var connection_at_point: = get_closest_connection_at_point(check_point, cut_radius + 0.5)
+                if not connection_at_point:
+                    break
+                num_cut += 1
+                remove_connection(connection_at_point)
+                #disconnect_node(connection_at_point.from_node, connection_at_point.from_port, connection_at_point.to_node, connection_at_point.to_port)
+        prev_cut_point = cut_global_pos
+    
+    if num_cut > 0:
+        create_undo_connection_change_step()
+        multi_connection_change = false
+
+    #if _first_cut_:
+    #    _first_cut_ = false
+    cancel_connection_cut()
+
+
+var mouse_panning: = false
+
+func handle_mouse_event(event: InputEventMouse) -> void:
+    var mouse_btn_event: = event as InputEventMouseButton
+    var mouse_motion_event: = event as InputEventMouseMotion
+    
+    if mouse_btn_event:
+        if mouse_btn_event.button_index == MOUSE_BUTTON_RIGHT:
+            if mouse_btn_event.is_pressed():
+                if mouse_btn_event.ctrl_pressed:
+                    start_connection_cut(mouse_btn_event.global_position)
+                else:
+                    mouse_panning = true
+            elif mouse_panning:
+                mouse_panning = false
+            elif connection_cut_active:
+                do_connection_cut()
+        elif mouse_btn_event.button_index == MOUSE_BUTTON_LEFT:
+            if connection_cut_active and mouse_btn_event.is_pressed():
+                cancel_connection_cut()
+                get_viewport().set_input_as_handled()
+    if mouse_motion_event:
+        if connection_cut_active:
+            add_connection_cut_point(mouse_motion_event.global_position)
+        elif mouse_panning:
+            scroll_offset -= mouse_motion_event.relative
+
+func on_zoom_changed() -> void:
+    cur_zoom_level = zoom
+    var menu_hbox: = get_menu_hbox()
+    var grid_toggle_btn: = menu_hbox.get_child(4) as Button
+    if zoom < 0.1:
+        grid_toggle_btn.disabled = true
+        show_grid = false
+    else:
+        grid_toggle_btn.disabled = false
+        show_grid = grid_logical_enabled
+
+func on_grid_toggled(grid_is_enabled: bool, grid_toggle_btn: Button) -> void:
+    if grid_toggle_btn.disabled:
+        return
+    grid_logical_enabled = grid_is_enabled
+
+#func _notification(what: int) -> void:
+    #if what == NOTIFICATION_WM_MOUSE_EXIT:
+        #mouse_panning = false
+
+func load_json_file(file_path: String) -> void:
+    var file = FileAccess.open(file_path, FileAccess.READ)
+    if not file:
+        print("Error opening JSON file %s" % file_path)
+        return
+    load_json(file.get_as_text())
+
+func load_json(json_data: String) -> void:
+    parsed_json_data = JSON.parse_string(json_data)
+    if not parsed_json_data:
+        print("Error parsing JSON")
+        return
+
+    prints("Loading JSON data")
+    if loaded:
+        clear_graph()
+        loaded = false
+    parse_root_asset_node(parsed_json_data)
+    create_graph_from_parsed_data()
+    loaded = true
+    prints("New data loaded from json")
+    if OS.has_feature("debug"):
+        test_reserialize_to_file(parsed_json_data)
+
+func _requested_open_file(path: String) -> void:
+    prints("Requested open file:", path)
+    load_json_file(path)
+
+func on_begin_node_move() -> void:
+    moved_nodes_positions.clear()
+    var selected_nodes: Array[GraphNode] = get_selected_gns()
+    for gn in selected_nodes:
+        moved_nodes_positions[gn] = gn.position_offset
+
+func on_end_node_move() -> void:
+    create_move_nodes_undo_step(get_selected_gns())
+
+func _set_gns_offsets(new_positions: Dictionary[GraphNode, Vector2]) -> void:
+    for gn in new_positions.keys():
+        gn.position_offset = new_positions[gn]
+
+func create_move_nodes_undo_step(moved_nodes: Array[GraphNode]) -> void:
+    prints("Creating move nodes (%d) undo step" % moved_nodes.size())
+    if moved_nodes.size() == 0:
+        return
+    var new_positions: Dictionary[GraphNode, Vector2] = {}
+    for gn in moved_nodes:
+        new_positions[gn] = gn.position_offset
+    undo_manager.create_action("Move Nodes")
+    undo_manager.add_do_method(_set_gns_offsets.bind(new_positions))
+    undo_manager.add_undo_method(_set_gns_offsets.bind(moved_nodes_positions.duplicate_deep()))
+    undo_manager.commit_action(false)
+
+func create_undo_connection_change_step() -> void:
+    prints("Creating undo connection change step")
+    print(cur_removed_connections)
+    undo_manager.create_action("Connection Change")
+    if cur_added_connections.size() > 0:
+        undo_manager.add_do_method(add_multiple_connections.bind(cur_added_connections.duplicate_deep(), false))
+    if cur_removed_connections.size() > 0:
+        undo_manager.add_do_method(remove_multiple_connections.bind(cur_removed_connections.duplicate_deep(), false))
+    
+    if cur_added_connections.size() > 0:
+        prints("Undo step removes %d connections" % cur_added_connections.size())
+        undo_manager.add_undo_method(remove_multiple_connections.bind(cur_added_connections.duplicate_deep(), false))
+    if cur_removed_connections.size() > 0:
+        prints("Undo step adds back %d connections" % cur_removed_connections.size())
+        undo_manager.add_undo_method(add_multiple_connections.bind(cur_removed_connections.duplicate_deep(), false))
+    
+    cur_added_connections.clear()
+    cur_removed_connections.clear()
+    
+    undo_manager.commit_action(false)
+
+
+func on_requested_save_file(file_path: String) -> void:
+    save_to_json_file(file_path)
+
+func save_to_json_file(file_path: String) -> void:
+    var json_str: = get_asset_node_graph_json_str()
+    var file: = FileAccess.open(file_path, FileAccess.WRITE)
+    if not file:
+        push_error("Error opening JSON file for writing: %s" % file_path)
+        return
+    file.store_string(json_str)
+    file.close()
+    prints("Saved asset node graph to JSON file: %s" % file_path)
+
+func get_asset_node_graph_json_str() -> String:
+    var serialized_data: Dictionary = serialize_asset_node_graph()
+    var json_str: = JSON.stringify(serialized_data, "  " if save_formatted_json else "", false)
+    if not json_str:
+        push_error("Error serializing asset node graph")
+        return ""
+    return json_str
+
+func serialize_asset_node_graph() -> Dictionary:
+    var serialized_data: Dictionary = root_node.serialize_me(schema)
+    serialized_data["$NodeEditorMetadata"] = serialize_node_editor_metadata()
+    
+    return serialized_data
+
+func serialize_node_editor_metadata() -> Dictionary:
+    var serialized_metadata: Dictionary = {}
+    serialized_metadata["$Nodes"] = {}
+    var root_gn: = gn_lookup.get(root_node.an_node_id, null) as GraphNode
+    if not root_gn:
+        push_error("Serialize Node Editor Metadata: Root node graph node not found")
+        return {}
+    var fallback_pos: = ((root_gn.position_offset - Vector2(200, 200)) / json_positions_scale).round()
+
+    for an in all_asset_nodes:
+        var gn: = gn_lookup.get(an.an_node_id, null) as GraphNode
+        var gn_pos: Vector2 = (gn.position_offset / json_positions_scale).round() if gn else fallback_pos
+        var node_meta_stuff: Dictionary = {
+            "$Position": {
+                "$x": gn_pos.x,
+                "$y": gn_pos.y,
+            },
+        }
+        if an.title:
+            node_meta_stuff["$Title"] = an.title
+        serialized_metadata["$Nodes"][an.an_node_id] = node_meta_stuff
+
+    var floating_trees_serialized: Array[Dictionary] = []
+    for floating_tree_root_an in floating_tree_roots:
+        floating_trees_serialized.append(floating_tree_root_an.serialize_me(schema))
+    serialized_metadata["$FloatingNodes"] = floating_trees_serialized
+    serialized_metadata["$WorkspaceID"] = hy_workspace_id
+    return serialized_metadata
+
+func test_reserialize_to_file(data_from_json: Dictionary) -> void:
+    var file_path: = "res://test_files/test_reserialize.json"
+    var file: = FileAccess.open(file_path, FileAccess.WRITE)
+    if not file:
+        print_debug("Error opening JSON file for writing (test reserialize): %s" % file_path)
+        return
+    file.store_string(JSON.stringify(data_from_json, "  ", false))
+    file.close()
+
