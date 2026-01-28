@@ -1,10 +1,12 @@
-[gd_scene load_steps=7 format=3 uid="uid://cgmj8na2ili3j"]
+[gd_scene load_steps=9 format=3 uid="uid://cgmj8na2ili3j"]
 
 [ext_resource type="Theme" uid="uid://cv3cabit36ilb" path="res://ui/main_theme.tres" id="1_0xm2m"]
 [ext_resource type="Script" uid="uid://b2hqpos1gajgs" path="res://asset_node_graph_edit.gd" id="1_ig7tw"]
 [ext_resource type="Script" uid="uid://dit1s6nyie23m" path="res://model/asset_nodes_schema.gd" id="3_h2yge"]
 [ext_resource type="Script" uid="uid://dyeeven10x5a6" path="res://dialog_handler.gd" id="5_7mycd"]
 [ext_resource type="Script" uid="uid://d2ucs5vp8diew" path="res://custom_graph_nodes/special_gn_factory.gd" id="5_lquwl"]
+[ext_resource type="Script" uid="uid://c7vsellvjd3jj" path="res://ui/new_gn_menu.gd" id="6_7mycd"]
+[ext_resource type="Theme" uid="uid://b08we05gf5iis" path="res://ui/new_node_menu_theme.tres" id="6_272bh"]
 
 [sub_resource type="Resource" id="Resource_1bvp3"]
 script = ExtResource("3_h2yge")
@@ -19,14 +21,13 @@ grow_horizontal = 2
 grow_vertical = 2
 theme = ExtResource("1_0xm2m")
 
-[node name="AssetNodeGraphEdit" type="GraphEdit" parent="."]
+[node name="AssetNodeGraphEdit" type="GraphEdit" parent="." node_paths=PackedStringArray("new_node_menu")]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-scroll_offset = Vector2(192, 108)
 grid_pattern = 1
 right_disconnects = true
 connection_lines_curvature = 0.2
@@ -37,6 +38,7 @@ show_zoom_label = true
 script = ExtResource("1_ig7tw")
 test_json_file = "res://test_files/example_biomes/Basic.json"
 schema = SubResource("Resource_1bvp3")
+new_node_menu = NodePath("../PopupMenuRoot/CenterContainer/NewGNMenu")
 
 [node name="SpecialGNFactory" type="Node" parent="AssetNodeGraphEdit"]
 script = ExtResource("5_lquwl")
@@ -45,10 +47,10 @@ metadata/_custom_type_script = "uid://d2ucs5vp8diew"
 [node name="TestGN" type="GraphNode" parent="AssetNodeGraphEdit"]
 visible = false
 layout_mode = 0
-offset_left = -107.0
-offset_top = 30.0
-offset_right = 35.0
-offset_bottom = 147.0
+offset_left = 85.0
+offset_top = 138.0
+offset_right = 227.0
+offset_bottom = 255.0
 mouse_filter = 1
 position_offset = Vector2(85, 138)
 title = "Title"
@@ -112,6 +114,66 @@ clear_button_enabled = true
 
 [node name="DialogHandler" type="Node" parent="."]
 script = ExtResource("5_7mycd")
+
+[node name="PopupMenuRoot" type="Control" parent="."]
+z_index = 2
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme = ExtResource("1_0xm2m")
+
+[node name="CenterContainer" type="CenterContainer" parent="PopupMenuRoot"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="NewGNMenu" type="PanelContainer" parent="PopupMenuRoot/CenterContainer" node_paths=PackedStringArray("graph_edit")]
+custom_minimum_size = Vector2(360, 200)
+layout_mode = 2
+theme = ExtResource("6_272bh")
+theme_type_variation = &"LightPanel"
+script = ExtResource("6_7mycd")
+graph_edit = NodePath("../../../AssetNodeGraphEdit")
+preview_categories = Array[String](["CatABC", "CatXYZ"])
+preview_items = Array[String](["Item1", "Item2", "", "Item3", "Item4", "", "LastCat Item"])
+
+[node name="MarginContainer" type="MarginContainer" parent="PopupMenuRoot/CenterContainer/NewGNMenu"]
+layout_mode = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="PopupMenuRoot/CenterContainer/NewGNMenu/MarginContainer"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="PopupMenuRoot/CenterContainer/NewGNMenu/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Add New Node:"
+
+[node name="PanelContainer" type="PanelContainer" parent="PopupMenuRoot/CenterContainer/NewGNMenu/MarginContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ScrollContainer" type="ScrollContainer" parent="PopupMenuRoot/CenterContainer/NewGNMenu/MarginContainer/VBoxContainer/PanelContainer"]
+custom_minimum_size = Vector2(0, 100)
+layout_mode = 2
+follow_focus = true
+horizontal_scroll_mode = 0
+
+[node name="Tree" type="Tree" parent="PopupMenuRoot/CenterContainer/NewGNMenu/MarginContainer/VBoxContainer/PanelContainer/ScrollContainer"]
+clip_contents = false
+custom_minimum_size = Vector2(0, 10)
+layout_mode = 2
+size_flags_horizontal = 3
+hide_root = true
+scroll_horizontal_enabled = false
+scroll_vertical_enabled = false
 
 [connection signal="ready" from="AssetNodeGraphEdit/TestGN" to="AssetNodeGraphEdit/TestGN" method="hide"]
 [connection signal="requested_open_file" from="DialogHandler" to="AssetNodeGraphEdit" method="_requested_open_file"]

@@ -6,6 +6,8 @@ class_name AssetNodeGraphEdit
 
 @export var schema: AssetNodesSchema
 
+@export var new_node_menu: Control
+
 var parsed_json_data: Dictionary = {}
 var loaded: = false
 
@@ -65,6 +67,9 @@ var cur_removed_connections: Array[Dictionary] = []
 var moved_nodes_positions: Dictionary[GraphNode, Vector2] = {}
 
 func _ready() -> void:
+    if not new_node_menu:
+        push_warning("New node menu is not set, please set it in the inspector")
+        print("New node menu is not set, please set it in the inspector")
     #add_valid_left_disconnect_type(1)
     begin_node_move.connect(on_begin_node_move)
     end_node_move.connect(on_end_node_move)
