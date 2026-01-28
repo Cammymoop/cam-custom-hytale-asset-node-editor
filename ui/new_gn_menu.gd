@@ -1,5 +1,11 @@
 @tool
 extends PanelContainer
+class_name NewGNMenu
+
+signal node_type_picked(node_type: String)
+signal cancelled()
+
+@export var auto_confirm_single_type: bool = true
 
 @export var graph_edit: AssetNodeGraphEdit
 var schema: AssetNodesSchema
@@ -8,25 +14,22 @@ var schema: AssetNodesSchema
 @export var scroll_max_height_ratio: = 0.85
 var scroll_max_height: = 0
 
+@export_tool_button("Show Preview Content", "Tree") var show_prev: = rebuild_preview_tree
+
 @onready var scroll_container: ScrollContainer = find_child("ScrollContainer")
 @onready var node_list_tree: Tree = scroll_container.get_node("Tree")
+@onready var show_all_btn: Button = find_child("ShowAllButton")
 
-@export var preview_categories: Array[String] = []:
-    get: return preview_categories
-    set(value):
-        preview_categories = value.duplicate()
-        if Engine.is_editor_hint():
-            rebuild_preview_tree()
-@export var preview_items: Array[String] = []:
-    get: return preview_items
-    set(value):
-        preview_items = value.duplicate()
-        if Engine.is_editor_hint():
-            rebuild_preview_tree()
+var cur_filter_is_output: bool = true
+var cur_filter_is_neither: bool = false
+var cur_filter_value_type: String = ""
 
 var an_types_by_output_value_type: Dictionary[String, Array] = {}
 var an_types_by_input_value_type: Dictionary[String, Array] = {}
 var an_input_types: Dictionary[String, Array] = {}
+
+var filter_set_single_type: String = ""
+var filter_set_single: bool = false
 
 var test_filters: Array = [
     true, "Density",
@@ -41,9 +44,15 @@ var test_filters: Array = [
 var test_filter_idx: int = -1
 
 func _ready() -> void:
+    hide()
+    show_all_btn.toggled.connect(on_show_all_btn_toggled)
     set_max_popup_height()
     get_window().size_changed.connect(set_max_popup_height)
+
     node_list_tree.resized.connect(on_tree_size_changed)
+    node_list_tree.item_activated.connect(tree_item_chosen)
+    node_list_tree.item_mouse_selected.connect(tree_item_mouse_selected)
+
     if Engine.is_editor_hint():
         return
     if not graph_edit:
@@ -59,6 +68,13 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
     if Engine.is_editor_hint():
         return
+    if not visible:
+        return
+    
+    if Input.is_action_just_pressed("ui_cancel"):
+        cancelled.emit()
+        hide()
+
     if Input.is_action_just_pressed("_debug_next_filter") and OS.has_feature("debug"):
         test_filter_idx += 1
         if test_filter_idx >= floori(test_filters.size() / 2.):
@@ -110,10 +126,12 @@ func build_node_list() -> void:
 
 func hide_all_categories() -> void:
     for category_item in node_list_tree.get_root().get_children():
+        category_item.collapsed = false
         category_item.visible = false
 
 func set_category_items_visible(type_category: String, to_visible: bool) -> void:
     for category_item in node_list_tree.get_root().get_children():
+        category_item.collapsed = false
         if category_item.get_text(0) == type_category:
             for child_item in category_item.get_children():
                 child_item.visible = to_visible
@@ -121,33 +139,94 @@ func set_category_items_visible(type_category: String, to_visible: bool) -> void
 func show_all_items() -> void:
     for category_item in node_list_tree.get_root().get_children():
         category_item.visible = true
+        category_item.collapsed = false
         for child_item in category_item.get_children():
             child_item.visible = true
 
-func filter_node_list_output(val_type: String) -> void:
+func set_filter_output(val_type: String) -> void:
+    cur_filter_is_neither = false
+    cur_filter_is_output = true
+    cur_filter_value_type = val_type
+    _filter_update()
+
+func set_filter_input(val_type: String) -> void:
+    cur_filter_is_neither = false
+    cur_filter_is_output = false
+    cur_filter_value_type = val_type
+    _filter_update()
+
+func _filter_update() -> void:
+    if cur_filter_is_neither:
+        return
+    if cur_filter_is_output:
+        _filter_update_output()
+    else:
+        _filter_update_input()
+
+func _filter_update_output() -> void:
+    filter_set_single = false
     hide_all_categories()
     for category_item in node_list_tree.get_root().get_children():
-        if category_item.get_text(0) == val_type:
+        if category_item.get_text(0) == cur_filter_value_type:
             category_item.visible = true
             set_category_items_visible(category_item.get_text(0), true)
+            var category_count: int = category_item.get_child_count()
+            if category_count == 1:
+                filter_set_single = true
+                filter_set_single_type = category_item.get_child(0).get_meta("node_type", "") as String
 
-func filter_node_list_input(val_type: String) -> void:
+func _filter_update_input() -> void:
+    filter_set_single = false
+    var more_than_one: bool = false
     hide_all_categories()
     for category_item in node_list_tree.get_root().get_children():
         for child_item in category_item.get_children():
             var item_node_type: = child_item.get_meta("node_type", "") as String
-            if val_type in an_input_types[item_node_type]:
+            if cur_filter_value_type in an_input_types[item_node_type]:
                 if not category_item.visible:
                     category_item.visible = true
                     set_category_items_visible(category_item.get_text(0), false)
                 child_item.visible = true
 
+                if not filter_set_single and not more_than_one:
+                    filter_set_single = true
+                    filter_set_single_type = item_node_type
+                elif filter_set_single:
+                    more_than_one = true
+                    filter_set_single = false
+
 func open_menu(for_left_connection: bool, connection_value_type: String) -> void:
-    show()
+    show_all_btn.set_pressed_no_signal(false)
+    show_all_btn.disabled = false
     if for_left_connection:
-        filter_node_list_output(connection_value_type)
+        set_filter_output(connection_value_type)
     else:
-        filter_node_list_input(connection_value_type)
+        set_filter_input(connection_value_type)
+
+    if auto_confirm_single_type and filter_set_single:
+        node_type_picked.emit(filter_set_single_type)
+        return
+
+    show()
+
+func open_all_menu() -> void:
+    cur_filter_is_neither = true
+    cur_filter_value_type = ""
+    _filter_update()
+    
+    show_all_btn.set_pressed_no_signal(true)
+    show_all_btn.disabled = true
+    show_all_items()
+    show()
+
+func on_show_all_btn_toggled(is_show_all: bool) -> void:
+    if is_show_all:
+        node_list_tree.scroll_vertical_enabled = true
+        show_all_items()
+        node_list_tree.scroll_vertical_enabled = false
+    else:
+        _filter_update()
+    
 
 func rebuild_preview_tree() -> void:
     if not is_inside_tree():
@@ -159,7 +238,7 @@ func rebuild_preview_tree() -> void:
     if not an_types_by_input_value_type:
         build_lookups()
     build_node_list()
-    filter_node_list_output("Density")
+    set_filter_input("Material")
 
 func on_tree_size_changed() -> void:
     print("tree size changed")
@@ -168,3 +247,24 @@ func on_tree_size_changed() -> void:
 func set_max_popup_height() -> void:
     var window_height: = get_window().size.y
     scroll_max_height = roundi(window_height * scroll_max_height_ratio)
+
+func tree_item_mouse_selected(_mouse_pos: Vector2, _buton_index: int) -> void:
+    tree_item_chosen()
+
+func tree_item_chosen() -> void:
+    var tree_item: TreeItem = node_list_tree.get_selected()
+    if not tree_item:
+        print_debug("Tree item chosen but no tree item selected")
+        return
+    choose_item(tree_item)
+
+func choose_item(tree_item: TreeItem) -> void:
+    if not tree_item.has_meta("node_type"):
+        print_debug("Tree item chosen but no node type meta found: ", tree_item.get_text(0))
+        cancelled.emit()
+        hide()
+        return
+
+    node_type_picked.emit(tree_item.get_meta("node_type"))
+    hide()
+    

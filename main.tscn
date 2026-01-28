@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3 uid="uid://cgmj8na2ili3j"]
+[gd_scene format=3 uid="uid://cgmj8na2ili3j"]
 
 [ext_resource type="Theme" uid="uid://cv3cabit36ilb" path="res://ui/main_theme.tres" id="1_0xm2m"]
 [ext_resource type="Script" uid="uid://b2hqpos1gajgs" path="res://asset_node_graph_edit.gd" id="1_ig7tw"]
@@ -12,7 +12,117 @@
 script = ExtResource("3_h2yge")
 metadata/_custom_type_script = "uid://dit1s6nyie23m"
 
-[node name="BaseControl" type="Control"]
+[sub_resource type="Theme" id="Theme_272bh"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_5vw27"]
+content_margin_left = 4.0
+content_margin_top = 4.0
+content_margin_right = 4.0
+content_margin_bottom = 4.0
+bg_color = Color(0.42153093, 0.6401899, 0.57964474, 1)
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_detail = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_kek77"]
+content_margin_left = 4.0
+content_margin_top = 4.0
+content_margin_right = 4.0
+content_margin_bottom = 4.0
+bg_color = Color(0.42330918, 0.7176965, 0.63957053, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_radius_bottom_left = 2
+corner_detail = 6
+expand_margin_left = 1.0
+expand_margin_top = 1.0
+expand_margin_bottom = 1.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_4c57u"]
+content_margin_left = 4.0
+content_margin_top = 4.0
+content_margin_right = 4.0
+content_margin_bottom = 4.0
+bg_color = Color(0.22660092, 0.48321092, 0.39709577, 1)
+border_width_top = 3
+border_width_bottom = 9
+border_color = Color(0.1339522, 0.31223708, 0.2527608, 1)
+border_blend = true
+corner_radius_top_left = 2
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_radius_bottom_left = 2
+corner_detail = 6
+expand_margin_left = 1.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_efxa6"]
+content_margin_left = 4.0
+content_margin_top = 0.0
+content_margin_right = 4.0
+content_margin_bottom = 0.0
+bg_color = Color(0.096811466, 0.09681145, 0.09681145, 0)
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_detail = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_dg77c"]
+content_margin_left = 4.0
+content_margin_top = 4.0
+content_margin_right = 4.0
+content_margin_bottom = 4.0
+bg_color = Color(1, 1, 1, 0.75)
+draw_center = false
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_detail = 5
+expand_margin_left = 2.0
+expand_margin_top = 2.0
+expand_margin_right = 2.0
+expand_margin_bottom = 2.0
+
+[sub_resource type="Theme" id="Theme_ycdy4"]
+VScrollBar/styles/grabber = SubResource("StyleBoxFlat_5vw27")
+VScrollBar/styles/grabber_highlight = SubResource("StyleBoxFlat_kek77")
+VScrollBar/styles/grabber_pressed = SubResource("StyleBoxFlat_4c57u")
+VScrollBar/styles/scroll = SubResource("StyleBoxFlat_efxa6")
+VScrollBar/styles/scroll_focus = SubResource("StyleBoxFlat_dg77c")
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_272bh"]
+content_margin_left = 0.0
+content_margin_top = 0.0
+content_margin_right = 0.0
+content_margin_bottom = 0.0
+bg_color = Color(0.05490196, 0.16862746, 0.14117648, 1)
+corner_radius_top_left = 7
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_radius_bottom_left = 7
+corner_detail = 5
+
+[sub_resource type="Gradient" id="Gradient_272bh"]
+interpolation_mode = 1
+offsets = PackedFloat32Array(0, 0.3, 0.7, 1)
+colors = PackedColorArray(1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_5vw27"]
+gradient = SubResource("Gradient_272bh")
+width = 128
+fill_to = Vector2(0.063, 0.063)
+repeat = 1
+metadata/_snap_enabled = true
+
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_kek77"]
+texture = SubResource("GradientTexture2D_5vw27")
+axis_stretch_horizontal = 1
+axis_stretch_vertical = 1
+modulate_color = Color(0.07715169, 0.19749302, 0.13582164, 1)
+
+[node name="BaseControl" type="Control" unique_id=1109592141]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -21,7 +131,7 @@ grow_horizontal = 2
 grow_vertical = 2
 theme = ExtResource("1_0xm2m")
 
-[node name="AssetNodeGraphEdit" type="GraphEdit" parent="." node_paths=PackedStringArray("new_node_menu")]
+[node name="AssetNodeGraphEdit" type="GraphEdit" parent="." unique_id=100492715 node_paths=PackedStringArray("new_node_menu")]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -39,12 +149,13 @@ script = ExtResource("1_ig7tw")
 test_json_file = "res://test_files/example_biomes/Basic.json"
 schema = SubResource("Resource_1bvp3")
 new_node_menu = NodePath("../PopupMenuRoot/CenterContainer/NewGNMenu")
+json_positions_scale = Vector2(0.4, 0.4)
 
-[node name="SpecialGNFactory" type="Node" parent="AssetNodeGraphEdit"]
+[node name="SpecialGNFactory" type="Node" parent="AssetNodeGraphEdit" unique_id=859398855]
 script = ExtResource("5_lquwl")
 metadata/_custom_type_script = "uid://d2ucs5vp8diew"
 
-[node name="TestGN" type="GraphNode" parent="AssetNodeGraphEdit"]
+[node name="TestGN" type="GraphNode" parent="AssetNodeGraphEdit" unique_id=749274935]
 visible = false
 layout_mode = 0
 offset_left = 85.0
@@ -82,40 +193,40 @@ slot/2/right_color = Color(1, 1, 1, 1)
 slot/2/right_icon = null
 slot/2/draw_stylebox = true
 
-[node name="Label" type="Label" parent="AssetNodeGraphEdit/TestGN"]
+[node name="Label" type="Label" parent="AssetNodeGraphEdit/TestGN" unique_id=691563055]
 layout_mode = 2
 text = "Inputs"
 horizontal_alignment = 2
 
-[node name="HBoxContainer" type="HBoxContainer" parent="AssetNodeGraphEdit/TestGN"]
+[node name="HBoxContainer" type="HBoxContainer" parent="AssetNodeGraphEdit/TestGN" unique_id=715097588]
 layout_mode = 2
 
-[node name="Label" type="Label" parent="AssetNodeGraphEdit/TestGN/HBoxContainer"]
+[node name="Label" type="Label" parent="AssetNodeGraphEdit/TestGN/HBoxContainer" unique_id=483263174]
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Skip:"
 
-[node name="CheckButton" type="CheckBox" parent="AssetNodeGraphEdit/TestGN/HBoxContainer"]
+[node name="CheckButton" type="CheckBox" parent="AssetNodeGraphEdit/TestGN/HBoxContainer" unique_id=1872196772]
 layout_mode = 2
 button_pressed = true
 
-[node name="HBoxContainer2" type="HBoxContainer" parent="AssetNodeGraphEdit/TestGN"]
+[node name="HBoxContainer2" type="HBoxContainer" parent="AssetNodeGraphEdit/TestGN" unique_id=1500528655]
 layout_mode = 2
 
-[node name="Label" type="Label" parent="AssetNodeGraphEdit/TestGN/HBoxContainer2"]
+[node name="Label" type="Label" parent="AssetNodeGraphEdit/TestGN/HBoxContainer2" unique_id=754472189]
 layout_mode = 2
 text = "Skip:"
 
-[node name="LineEdit" type="LineEdit" parent="AssetNodeGraphEdit/TestGN/HBoxContainer2"]
+[node name="LineEdit" type="LineEdit" parent="AssetNodeGraphEdit/TestGN/HBoxContainer2" unique_id=1695382203]
 layout_mode = 2
 size_flags_horizontal = 3
 text = "asd"
 clear_button_enabled = true
 
-[node name="DialogHandler" type="Node" parent="."]
+[node name="DialogHandler" type="Node" parent="." unique_id=1722932133]
 script = ExtResource("5_7mycd")
 
-[node name="PopupMenuRoot" type="Control" parent="."]
+[node name="PopupMenuRoot" type="Control" parent="." unique_id=1222369526]
 z_index = 2
 layout_mode = 1
 anchors_preset = 15
@@ -126,7 +237,7 @@ grow_vertical = 2
 mouse_filter = 2
 theme = ExtResource("1_0xm2m")
 
-[node name="CenterContainer" type="CenterContainer" parent="PopupMenuRoot"]
+[node name="CenterContainer" type="CenterContainer" parent="PopupMenuRoot" unique_id=1041756882]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -134,46 +245,57 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
+theme = SubResource("Theme_272bh")
 
-[node name="NewGNMenu" type="PanelContainer" parent="PopupMenuRoot/CenterContainer" node_paths=PackedStringArray("graph_edit")]
-custom_minimum_size = Vector2(360, 200)
+[node name="NewGNMenu" type="PanelContainer" parent="PopupMenuRoot/CenterContainer" unique_id=1164840852 node_paths=PackedStringArray("graph_edit")]
+visible = false
+custom_minimum_size = Vector2(360, 50)
 layout_mode = 2
 theme = ExtResource("6_272bh")
 theme_type_variation = &"LightPanel"
 script = ExtResource("6_7mycd")
 graph_edit = NodePath("../../../AssetNodeGraphEdit")
-preview_categories = Array[String](["CatABC", "CatXYZ"])
-preview_items = Array[String](["Item1", "Item2", "", "Item3", "Item4", "", "LastCat Item"])
+scroll_min_height = 40
 
-[node name="MarginContainer" type="MarginContainer" parent="PopupMenuRoot/CenterContainer/NewGNMenu"]
+[node name="MarginContainer" type="MarginContainer" parent="PopupMenuRoot/CenterContainer/NewGNMenu" unique_id=169873950]
 layout_mode = 2
 
-[node name="VBoxContainer" type="VBoxContainer" parent="PopupMenuRoot/CenterContainer/NewGNMenu/MarginContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="PopupMenuRoot/CenterContainer/NewGNMenu/MarginContainer" unique_id=1578756637]
 layout_mode = 2
 
-[node name="Label" type="Label" parent="PopupMenuRoot/CenterContainer/NewGNMenu/MarginContainer/VBoxContainer"]
+[node name="Label" type="Label" parent="PopupMenuRoot/CenterContainer/NewGNMenu/MarginContainer/VBoxContainer" unique_id=434384524]
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
 text = "Add New Node:"
+horizontal_alignment = 1
 
-[node name="PanelContainer" type="PanelContainer" parent="PopupMenuRoot/CenterContainer/NewGNMenu/MarginContainer/VBoxContainer"]
+[node name="PanelContainer" type="PanelContainer" parent="PopupMenuRoot/CenterContainer/NewGNMenu/MarginContainer/VBoxContainer" unique_id=254435072]
+clip_children = 2
 layout_mode = 2
 size_flags_vertical = 3
+theme = SubResource("Theme_ycdy4")
+theme_override_styles/panel = SubResource("StyleBoxFlat_272bh")
 
-[node name="ScrollContainer" type="ScrollContainer" parent="PopupMenuRoot/CenterContainer/NewGNMenu/MarginContainer/VBoxContainer/PanelContainer"]
-custom_minimum_size = Vector2(0, 100)
+[node name="ScrollContainer" type="ScrollContainer" parent="PopupMenuRoot/CenterContainer/NewGNMenu/MarginContainer/VBoxContainer/PanelContainer" unique_id=320222429]
+custom_minimum_size = Vector2(0, 253)
 layout_mode = 2
-follow_focus = true
 horizontal_scroll_mode = 0
+scroll_hint_mode = 1
 
-[node name="Tree" type="Tree" parent="PopupMenuRoot/CenterContainer/NewGNMenu/MarginContainer/VBoxContainer/PanelContainer/ScrollContainer"]
+[node name="Tree" type="Tree" parent="PopupMenuRoot/CenterContainer/NewGNMenu/MarginContainer/VBoxContainer/PanelContainer/ScrollContainer" unique_id=374406916]
 clip_contents = false
 custom_minimum_size = Vector2(0, 10)
 layout_mode = 2
 size_flags_horizontal = 3
+theme_override_styles/panel = SubResource("StyleBoxTexture_kek77")
 hide_root = true
 scroll_horizontal_enabled = false
 scroll_vertical_enabled = false
+
+[node name="ShowAllButton" type="CheckButton" parent="PopupMenuRoot/CenterContainer/NewGNMenu/MarginContainer/VBoxContainer" unique_id=849586667]
+layout_mode = 2
+size_flags_horizontal = 4
+text = "Show All"
 
 [connection signal="ready" from="AssetNodeGraphEdit/TestGN" to="AssetNodeGraphEdit/TestGN" method="hide"]
 [connection signal="requested_open_file" from="DialogHandler" to="AssetNodeGraphEdit" method="_requested_open_file"]

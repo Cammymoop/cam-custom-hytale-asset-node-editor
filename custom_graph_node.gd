@@ -1,6 +1,14 @@
 class_name CustomGraphNode
 extends GraphNode
 
+signal was_right_clicked(graph_node: CustomGraphNode)
+
+func _gui_input(event: InputEvent) -> void:
+    if not event is InputEventMouseButton:
+        return
+    if event.is_pressed() and event.button_index == MOUSE_BUTTON_RIGHT:
+        was_right_clicked.emit(self)
+
 func _draw_port(_slot_index: int, port_pos: Vector2i, _left: bool, color: Color) -> void:
     var base_icon: = get_theme_icon("port", "GraphNode")
     
