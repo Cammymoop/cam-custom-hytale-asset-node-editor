@@ -1,4 +1,5 @@
 extends Node
+class_name DialogHandler
 
 signal requested_open_file(path: String)
 signal requested_save_file(path: String)

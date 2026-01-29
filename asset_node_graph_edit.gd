@@ -21,6 +21,7 @@ var floating_tree_roots: Array[HyAssetNode] = []
 var root_node: HyAssetNode = null
 
 @onready var special_gn_factory: SpecialGNFactory = $SpecialGNFactory
+@onready var dialog_handler: DialogHandler = $DialogHandler
 
 var asset_node_meta: Dictionary[String, Dictionary] = {}
 
@@ -73,7 +74,11 @@ var context_menu_ready: bool = false
 
 var dropping_new_node_at: Vector2 = Vector2.ZERO
 var next_drop_has_connection: Dictionary = {}
-var output_port_drop_offset: Vector2 = Vector2(0, -16)
+var next_drop_conn_value_type: String = ""
+
+var output_port_drop_offset: Vector2 = Vector2(2, -34)
+var input_port_drop_first_offset: Vector2 = Vector2(-2, -34)
+var input_port_drop_additional_offset: Vector2 = Vector2(0, -19)
 
 var undo_manager: UndoRedo = UndoRedo.new()
 var multi_connection_change: bool = false
@@ -82,6 +87,9 @@ var cur_added_connections: Array[Dictionary] = []
 var cur_removed_connections: Array[Dictionary] = []
 var moved_nodes_positions: Dictionary[GraphNode, Vector2] = {}
 
+var file_menu_btn: MenuButton = null
+var file_menu_menu: PopupMenu = null
+
 func _ready() -> void:
     if not new_node_menu:
         push_warning("New node menu is not set, please set it in the inspector")
@@ -89,6 +97,8 @@ func _ready() -> void:
     else:
         new_node_menu.node_type_picked.connect(on_new_node_type_picked)
         new_node_menu.cancelled.connect(on_new_node_menu_cancelled)
+    
+    setup_file_menu()
 
     #add_valid_left_disconnect_type(1)
     begin_node_move.connect(on_begin_node_move)
@@ -147,6 +157,36 @@ func _process(_delta: float) -> void:
     
     if cur_zoom_level != zoom:
         on_zoom_changed()
+    
+func setup_file_menu() -> void:
+    file_menu_btn = preload("res://ui/file_menu.tscn").instantiate()
+    file_menu_menu = file_menu_btn.get_popup()
+    var menu_hbox: = get_menu_hbox()
+    var sep: = VSeparator.new()
+    menu_hbox.add_child(sep)
+    menu_hbox.move_child(sep, 0)
+    menu_hbox.add_child(file_menu_btn)
+    menu_hbox.move_child(file_menu_btn, 0)
+    
+    file_menu_menu.id_pressed.connect(on_file_menu_id_pressed)
+
+func on_file_menu_id_pressed(id: int) -> void:
+    var menu_item_text: = file_menu_menu.get_item_text(file_menu_menu.get_item_index(id))
+    match menu_item_text:
+        "Open":
+            dialog_handler.show_open_file_dialog()
+        "Save":
+            dialog_handler.show_save_file_dialog()
+        "New":
+            setup_new_graph()
+
+func setup_new_graph() -> void:
+    clear_graph()
+    var new_root_node: HyAssetNode = get_new_asset_node("BiomeRoot")
+    root_node = new_root_node
+    var screen_center_pos: Vector2 = get_viewport_rect().size / 2
+    var new_gn: CustomGraphNode = make_and_add_graph_node(new_root_node, screen_center_pos)
+    gn_lookup[new_root_node.an_node_id] = new_gn
 
 func is_mouse_wheel_event(event: InputEvent) -> bool:
     return event is InputEventMouseButton and (
@@ -198,9 +238,17 @@ func _add_connection(from_gn_name: StringName, from_port: int, to_gn_name: Strin
         from_an.append_node_to_connection(conn_name, to_an)
     else:
         var prev_connected_node: HyAssetNode = from_an.get_connected_node(conn_name, 0)
+        var was_removed: bool = false
         if prev_connected_node and gn_lookup.has(prev_connected_node.an_node_id):
-            _remove_connection(from_gn_name, from_port, prev_connected_node.an_node_id, 0)
-        from_an.set_connection(conn_name, 0, to_an)
+            was_removed = true
+            _remove_connection(from_gn_name, from_port, gn_lookup[prev_connected_node.an_node_id].name, 0)
+        from_an.append_node_to_connection(conn_name, to_an)
+        if was_removed:
+            var connected_node_keys: Array[String] = from_an.connected_asset_nodes.keys()
+            var pretty_print: Dictionary = {}
+            for conn_key in connected_node_keys:
+                pretty_print[conn_key] = from_an.connected_asset_nodes[conn_key].an_node_id
+            print("new an connections: %s)" % [pretty_print])
     
     if to_an in floating_tree_roots:
         floating_tree_roots.erase(to_an)
@@ -258,10 +306,23 @@ func _remove_connection(from_gn_name: StringName, from_port: int, to_gn_name: St
         create_undo_connection_change_step()
 
 func remove_asset_node(asset_node: HyAssetNode) -> void:
-    all_asset_nodes.erase(asset_node)
+    _erase_asset_node(asset_node)
     an_lookup.erase(asset_node.an_node_id)
     gn_lookup.erase(asset_node.an_node_id)
-    asset_node.queue_free()
+
+func _erase_asset_node(asset_node: HyAssetNode) -> void:
+    all_asset_nodes.erase(asset_node)
+    all_asset_node_ids.erase(asset_node.an_node_id)
+
+func _register_asset_node(asset_node: HyAssetNode) -> void:
+    if asset_node in all_asset_nodes:
+        print_debug("Asset node %s already registered" % asset_node.an_node_id)
+    else:
+        all_asset_nodes.append(asset_node)
+    if asset_node.an_node_id in all_asset_node_ids:
+        print_debug("Asset node ID %s already registered" % asset_node.an_node_id)
+    else:
+        all_asset_node_ids.append(asset_node.an_node_id)
 
 func _delete_request(delete_gn_names: Array[StringName]) -> void:
     for gn_name in delete_gn_names:
@@ -286,8 +347,9 @@ func _connect_right_request(from_gn_name: StringName, from_port: int, dropped_po
     }
     var from_an: HyAssetNode = an_lookup.get(get_node(NodePath(from_gn_name)).get_meta("hy_asset_node_id", ""), null)
     if from_an:
-        var conn_value_type: String = schema.node_schema[from_an.an_type]["connections"][from_an.connection_list[from_port]].get("value_type", "")
-        new_node_menu.open_menu(true, conn_value_type)
+        var from_node_schema: Dictionary = schema.node_schema[from_an.an_type]
+        next_drop_conn_value_type = from_node_schema["connections"][from_an.connection_list[from_port]].get("value_type", "")
+        new_node_menu.open_menu(true, next_drop_conn_value_type)
     else:
         print_debug("Connect right request: From asset node not found")
 
@@ -300,8 +362,9 @@ func _connect_left_request(to_gn_name: StringName, to_port: int, dropped_pos: Ve
     }
     var to_an: HyAssetNode = an_lookup.get(get_node(NodePath(to_gn_name)).get_meta("hy_asset_node_id", ""), null)
     if to_an:
-        var conn_value_type: String = schema.node_schema[to_an.an_type]["output_value_type"]
-        new_node_menu.open_menu(true, conn_value_type)
+        var to_node_schema: Dictionary = schema.node_schema[to_an.an_type]
+        next_drop_conn_value_type = to_node_schema["output_value_type"]
+        new_node_menu.open_menu(false, next_drop_conn_value_type)
     else:
         print_debug("Connect left request: To asset node not found")
 
@@ -311,6 +374,7 @@ func on_new_node_menu_cancelled() -> void:
 func clear_next_drop() -> void:
     dropping_new_node_at = Vector2.ZERO
     next_drop_has_connection = {}
+    next_drop_conn_value_type = ""
 
 func get_unique_id(id_prefix: String = "") -> String:
     return "%s-%s" % [id_prefix, Util.unique_id_string()]
@@ -326,9 +390,11 @@ func get_new_asset_node(asset_node_type: String, id_prefix: String = "") -> HyAs
     new_asset_node.an_node_id = get_unique_id(id_prefix)
     new_asset_node.an_type = asset_node_type
     new_asset_node.an_name = schema.get_node_type_default_name(asset_node_type)
-    all_asset_nodes.append(new_asset_node)
+    _register_asset_node(new_asset_node)
     an_lookup[new_asset_node.an_node_id] = new_asset_node
     init_asset_node(new_asset_node)
+    new_asset_node.has_inner_asset_nodes = true
+
     return new_asset_node
 
 func get_selected_gns() -> Array[GraphNode]:
@@ -377,9 +443,6 @@ func clear_graph() -> void:
 func create_graph_from_parsed_data() -> void:
     await get_tree().create_timer(0.1).timeout
     
-    #print("Loaded asset nodes:")
-    #print_asset_node_list()
-    
     if use_json_positions:
         pass#relative_root_position = get_node_position_from_meta(root_node.an_node_id)
     
@@ -398,13 +461,6 @@ func get_node_position_from_meta(node_id: String) -> Vector2:
     var meta_pos: Dictionary = node_meta.get("$Position", {"$x": relative_root_position.x, "$y": relative_root_position.y - 560})
     return Vector2(meta_pos["$x"], meta_pos["$y"])
     
-func print_asset_node_list() -> void:
-    var more_than_ten: = all_asset_nodes.size() > 10
-    for asset_node in all_asset_nodes.slice(0, 10):
-        prints("Asset Node || '%s' (%s)" % [asset_node.an_name, asset_node.an_node_id])
-    if more_than_ten:
-        prints("... (Total: %d)" % all_asset_nodes.size())
-    
 func parse_asset_node_shallow(asset_node_data: Dictionary, output_value_type: String = "", known_node_type: String = "") -> HyAssetNode:
     if not asset_node_data:
         print_debug("Asset node data is empty")
@@ -415,6 +471,9 @@ func parse_asset_node_shallow(asset_node_data: Dictionary, output_value_type: St
     
     var asset_node = HyAssetNode.new()
     asset_node.an_node_id = asset_node_data["$NodeId"]
+    
+    if asset_node_data.has("$Comment"):
+        asset_node.comment = asset_node_data["$Comment"]
     
     if an_lookup.has(asset_node.an_node_id):
         print_debug("Warning: Asset node with ID %s already exists in lookup, overriding..." % asset_node.an_node_id)
@@ -460,6 +519,7 @@ func init_asset_node(asset_node: HyAssetNode) -> void:
     asset_node.an_name = schema.get_node_type_default_name(asset_node.an_type)
     if asset_node_meta and asset_node_meta.has(asset_node.an_node_id) and asset_node_meta[asset_node.an_node_id].has("$Title"):
         asset_node.an_name = asset_node_meta[asset_node.an_node_id]["$Title"]
+        asset_node.title = asset_node.an_name
     
     var connections_schema: Dictionary = type_schema.get("connections", {})
     for conn_name in connections_schema.keys():
@@ -515,7 +575,7 @@ func parse_root_asset_node(base_node: Dictionary) -> void:
             var floating_parse_result: = parse_asset_node_deep(floating_tree)
             floating_tree_roots.append(floating_parse_result["base"])
             parsed_node_count += floating_parse_result["all_nodes"].size()
-            print("Floating tree parsed, %d nodes" % floating_parse_result["all_nodes"].size(), " (total: %d)" % parsed_node_count)
+            #print("Floating tree parsed, %d nodes" % floating_parse_result["all_nodes"].size(), " (total: %d)" % parsed_node_count)
             all_asset_nodes.append_array(floating_parse_result["all_nodes"])
             for an in floating_parse_result["all_nodes"]:
                 all_asset_node_ids.append(an.an_node_id)
@@ -536,7 +596,7 @@ func parse_root_asset_node(base_node: Dictionary) -> void:
     root_node = parse_result["base"]
     all_asset_nodes.append_array(parse_result["all_nodes"])
     parsed_node_count += parse_result["all_nodes"].size()
-    print("Root node parsed, %d nodes" % parse_result["all_nodes"].size(), " (total: %d)" % parsed_node_count)
+    #print("Root node parsed, %d nodes" % parse_result["all_nodes"].size(), " (total: %d)" % parsed_node_count)
     for an in parse_result["all_nodes"]:
         all_asset_node_ids.append(an.an_node_id)
         
@@ -579,9 +639,9 @@ func make_graph_stuff() -> void:
             base_tree_pos.y = last_y + 40
 
 func make_and_add_graph_node(asset_node: HyAssetNode, at_global_pos: Vector2) -> CustomGraphNode:
-    var new_gn: CustomGraphNode = new_graph_node(asset_node, asset_node)
+    var new_gn: CustomGraphNode = new_graph_node(asset_node, asset_node, true)
     add_child(new_gn, true)
-    new_gn.position_offset = scroll_offset + (at_global_pos * zoom)
+    new_gn.position_offset = (scroll_offset + at_global_pos) / zoom
     return new_gn
     
 func connect_children(graph_node: CustomGraphNode) -> void:
@@ -626,7 +686,7 @@ func new_graph_nodes_for_tree(tree_root_node: HyAssetNode) -> Array[CustomGraphN
 func _recursive_new_graph_nodes(at_asset_node: HyAssetNode, root_asset_node: HyAssetNode) -> Array[CustomGraphNode]:
     var new_graph_nodes: Array[CustomGraphNode] = []
 
-    var this_gn: = new_graph_node(at_asset_node, root_asset_node)
+    var this_gn: = new_graph_node(at_asset_node, root_asset_node, false)
     new_graph_nodes.append(this_gn)
 
     for conn_name in get_graph_connections_for(this_gn):
@@ -660,11 +720,11 @@ func get_graph_connected_graph_nodes(graph_node: CustomGraphNode, conn_name: Str
 func should_be_special_gn(asset_node: HyAssetNode) -> bool:
     return special_gn_factory.types_with_special_nodes.has(asset_node.an_type)
 
-func new_graph_node(asset_node: HyAssetNode, root_asset_node: HyAssetNode) -> CustomGraphNode:
+func new_graph_node(asset_node: HyAssetNode, root_asset_node: HyAssetNode, newly_created: bool) -> CustomGraphNode:
     var graph_node: CustomGraphNode = null
     var is_special: = should_be_special_gn(asset_node)
     if is_special:
-        graph_node = special_gn_factory.make_special_gn(root_asset_node, asset_node)
+        graph_node = special_gn_factory.make_special_gn(root_asset_node, asset_node, newly_created)
     else:
         graph_node = CustomGraphNode.new()
     
@@ -989,8 +1049,11 @@ func create_undo_connection_change_step() -> void:
     cur_connection_added_gns.clear()
     cur_added_connections.clear()
     cur_removed_connections.clear()
-
-    undo_manager.create_action("Connection Change")
+    
+    var undo_step_name: = "Connection Change"
+    if added_gns.size() > 0:
+        undo_step_name = "Add Nodes With Connections"
+    undo_manager.create_action(undo_step_name)
     if added_gns.size() > 0:
         var the_ans: Dictionary[GraphNode, HyAssetNode] = {}
         for the_gn in added_gns:
@@ -1012,12 +1075,24 @@ func create_undo_connection_change_step() -> void:
     
     undo_manager.commit_action(false)
 
+func create_add_new_gn_undo_step(the_new_gn: GraphNode) -> void:
+    undo_manager.create_action("Add New GN")
+    var the_asset_node: HyAssetNode = null
+    if the_new_gn.get_meta("hy_asset_node_id", ""):
+        the_asset_node = an_lookup[the_new_gn.get_meta("hy_asset_node_id")]
+
+    undo_manager.add_do_method(redo_add_graph_node.bind(the_new_gn, the_asset_node))
+    
+    undo_manager.add_undo_method(undo_add_graph_node.bind(the_new_gn))
+
+    undo_manager.commit_action(false)
+
 func redo_add_gns(the_gns: Array[GraphNode], the_ans: Dictionary[GraphNode, HyAssetNode]) -> void:
     for the_gn in the_gns:
         redo_add_graph_node(the_gn, the_ans[the_gn])
 
 func redo_add_graph_node(the_graph_node: GraphNode, the_asset_node: HyAssetNode) -> void:
-    all_asset_nodes.append(the_asset_node)
+    _register_asset_node(the_asset_node)
     an_lookup[the_asset_node.an_node_id] = the_asset_node
     gn_lookup[the_asset_node.an_node_id] = the_graph_node
     add_child(the_graph_node, true)
@@ -1029,6 +1104,7 @@ func undo_add_gns(the_gns: Array[GraphNode]) -> void:
 func undo_add_graph_node(the_graph_node: GraphNode) -> void:
     if the_graph_node.get_meta("hy_asset_node_id", ""):
         var the_asset_node: HyAssetNode = an_lookup[the_graph_node.get_meta("hy_asset_node_id", "")]
+        _erase_asset_node(the_asset_node)
         an_lookup.erase(the_asset_node.an_node_id)
         gn_lookup.erase(the_asset_node.an_node_id)
     remove_child(the_graph_node)
@@ -1055,7 +1131,7 @@ func get_asset_node_graph_json_str() -> String:
     return json_str
 
 func serialize_asset_node_graph() -> Dictionary:
-    var serialized_data: Dictionary = root_node.serialize_me(schema)
+    var serialized_data: Dictionary = root_node.serialize_me(schema, gn_lookup)
     serialized_data["$NodeEditorMetadata"] = serialize_node_editor_metadata()
     
     return serialized_data
@@ -1084,7 +1160,7 @@ func serialize_node_editor_metadata() -> Dictionary:
 
     var floating_trees_serialized: Array[Dictionary] = []
     for floating_tree_root_an in floating_tree_roots:
-        floating_trees_serialized.append(floating_tree_root_an.serialize_me(schema))
+        floating_trees_serialized.append(floating_tree_root_an.serialize_me(schema, gn_lookup))
     serialized_metadata["$FloatingNodes"] = floating_trees_serialized
     serialized_metadata["$WorkspaceID"] = hy_workspace_id
     return serialized_metadata
@@ -1100,18 +1176,40 @@ func test_reserialize_to_file(data_from_json: Dictionary) -> void:
 
 func on_new_node_type_picked(node_type: String) -> void:
     prints("New node type picked: %s" % node_type)
+    var new_an: HyAssetNode = get_new_asset_node(node_type)
+    var new_gn: CustomGraphNode = null
     if next_drop_has_connection:
-        var new_an: HyAssetNode = get_new_asset_node(node_type)
-        var new_gn: CustomGraphNode = null
         if next_drop_has_connection.has("from_node"):
-            new_gn = make_and_add_graph_node(new_an, dropping_new_node_at + output_port_drop_offset)
+            new_gn = make_and_add_graph_node(new_an, dropping_new_node_at)
+            new_gn.position_offset += output_port_drop_offset
             next_drop_has_connection["to_node"] = new_gn.name
             next_drop_has_connection["to_port"] = 0
-            cur_connection_added_gns.append(new_gn)
-            add_connection(next_drop_has_connection)
         else:
             new_gn = make_and_add_graph_node(new_an, dropping_new_node_at)
+            new_gn.position_offset.x -= new_gn.size.x
+
             next_drop_has_connection["from_node"] = new_gn.name
+            var new_an_schema: Dictionary = schema.node_schema[new_an.an_type]
+            var input_conn_index: int = -1
+            var conn_names: Array = new_an_schema.get("connections", {}).keys()
+            for conn_idx in conn_names.size():
+                if new_an_schema["connections"][conn_names[conn_idx]].get("value_type", "") == next_drop_conn_value_type:
+                    input_conn_index = conn_idx
+                    break
+            if input_conn_index == -1:
+                print_debug("New node type picked: No input connection found for value type: %s" % next_drop_conn_value_type)
+                input_conn_index = 0
+
+            next_drop_has_connection["from_port"] = input_conn_index
+            new_gn.position_offset += input_port_drop_first_offset + (input_port_drop_additional_offset * input_conn_index)
+        cur_connection_added_gns.append(new_gn)
+        add_connection(next_drop_has_connection)
+    else:
+        var screen_center_pos: = get_viewport().get_visible_rect().size / 2
+        new_gn = make_and_add_graph_node(new_an, screen_center_pos)
+        new_gn.position_offset -= new_gn.size / 2
+        create_add_new_gn_undo_step(new_gn)
+
 
 func can_dissolve_gn(graph_node: GraphNode) -> bool:
     if not graph_node.get_meta("hy_asset_node_id", ""):

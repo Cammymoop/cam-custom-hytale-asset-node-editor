@@ -130,8 +130,7 @@ func remove_node_from_connection_at(conn_name: String, at_index: int) -> void:
         print_debug("Index %s is out of range for connection %s" % [at_index, conn_name])
         return
 
-    connected_asset_nodes.erase("%s:%d" % [conn_name, at_index])
-    _reindex_connection(conn_name)
+    remove_indices_from_connection(conn_name, [at_index])
 
 func insert_node_into_connection_at(conn_name: String, at_index: int, asset_node: HyAssetNode) -> void:
     if at_index < 0 or at_index > connected_node_counts[conn_name]:
@@ -142,14 +141,19 @@ func insert_node_into_connection_at(conn_name: String, at_index: int, asset_node
     else:
         _reindex_connection(conn_name, -1, {at_index: asset_node})
 
+func remove_indices_from_connection(conn_name: String, indices: Array[int]) -> void:
+    for idx in indices:
+        connected_asset_nodes.erase("%s:%d" % [conn_name, idx])
+    _reindex_connection(conn_name)
+
 func _reindex_connection(conn_name: String, max_index: int = -1, insert_nodes: Dictionary[int, HyAssetNode] = {}) -> void:
     if max_index < 0:
         max_index = connected_node_counts[conn_name]
     
     var new_list: Array[HyAssetNode] = []
-    for i in range(max_index + 1):
-        if connected_asset_nodes.has("%s:%d" % [conn_name, i]):
-            new_list.append(connected_asset_nodes["%s:%d" % [conn_name, i]])
+    for old_index in range(max_index):
+        if connected_asset_nodes.has("%s:%d" % [conn_name, old_index]):
+            new_list.append(connected_asset_nodes["%s:%d" % [conn_name, old_index]])
     
     var insert_at_indices = insert_nodes.keys()
     insert_at_indices.sort()
@@ -157,8 +161,11 @@ func _reindex_connection(conn_name: String, max_index: int = -1, insert_nodes: D
         new_list.insert(insert_idx, insert_nodes[insert_idx])
     
     connected_node_counts[conn_name] = new_list.size()
-    for i in range(new_list.size()):
-        connected_asset_nodes["%s:%d" % [conn_name, i]] = new_list[i]
+    for new_index in max_index:
+        if new_index < new_list.size():
+            connected_asset_nodes["%s:%d" % [conn_name, new_index]] = new_list[new_index]
+        else:
+            connected_asset_nodes.erase("%s:%d" % [conn_name, new_index])
 
     
 
@@ -187,7 +194,7 @@ func _get_connected_node_list(conn_name: String) -> Array[HyAssetNode]:
         node_list.append(connected_asset_nodes["%s:%d" % [conn_name, i]])
     return node_list
 
-func serialize_me(schema: AssetNodesSchema) -> Dictionary:
+func serialize_me(schema: AssetNodesSchema, gn_lookup: Dictionary[String, GraphNode]) -> Dictionary:
     if not has_inner_asset_nodes:
         print_debug("Serializing unpopulated asset node (%s)" % an_node_id)
         return raw_tree_data.duplicate(true)
@@ -214,9 +221,9 @@ func serialize_me(schema: AssetNodesSchema) -> Dictionary:
             if num_connected > 1:
                 serialized_data[conn_name] = []
                 for connected_an in get_all_connected_nodes(conn_name):
-                    serialized_data[conn_name].append(connected_an.serialize_me(schema))
+                    serialized_data[conn_name].append(connected_an.serialize_me(schema, gn_lookup))
             else:
-                serialized_data[conn_name] = get_connected_node(conn_name, 0).serialize_me(schema)
+                serialized_data[conn_name] = get_connected_node(conn_name, 0).serialize_me(schema, gn_lookup)
     else:
         var node_schema: = schema.node_schema[an_type]
         var serialized_type_key: Variant = schema.node_types.find_key(an_type)
@@ -234,9 +241,22 @@ func serialize_me(schema: AssetNodesSchema) -> Dictionary:
             var is_multi: bool = node_schema["connections"][conn_name].get("multi", false)
             if is_multi:
                 serialized_data[conn_name] = []
+                var sort_by_gn_pos: = func (a: HyAssetNode, b: HyAssetNode) -> bool:
+                    var a_gn: = gn_lookup.get(a.an_node_id, null) as GraphNode
+                    var b_gn: = gn_lookup.get(b.an_node_id, null) as GraphNode
+                    if a_gn and not b_gn:
+                        return true
+                    elif not a_gn and b_gn:
+                        return false
+                    elif a_gn.position_offset.y != b_gn.position_offset.y:
+                        return a_gn.position_offset.y < b_gn.position_offset.y
+                    else:
+                        return a_gn.position_offset.x < b_gn.position_offset.x
+
                 for connected_an in get_all_connected_nodes(conn_name):
-                    serialized_data[conn_name].append(connected_an.serialize_me(schema))
+                    serialized_data[conn_name].append(connected_an.serialize_me(schema, gn_lookup))
+                serialized_data[conn_name].sort_custom(sort_by_gn_pos)
             else:
-                serialized_data[conn_name] = get_connected_node(conn_name, 0).serialize_me(schema)
+                serialized_data[conn_name] = get_connected_node(conn_name, 0).serialize_me(schema, gn_lookup)
 
     return serialized_data

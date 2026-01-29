@@ -1,0 +1,8 @@
+[gd_scene format=3 uid="uid://cg03w706i6kw8"]
+
+[ext_resource type="Script" uid="uid://br47wwdppd7jj" path="res://ui/number_edit.gd" id="1_8hg80"]
+
+[node name="NumberEdit" type="LineEdit" unique_id=849954303]
+offset_right = 68.5
+offset_bottom = 30.333334
+script = ExtResource("1_8hg80")

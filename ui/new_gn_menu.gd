@@ -241,7 +241,6 @@ func rebuild_preview_tree() -> void:
     set_filter_input("Material")
 
 func on_tree_size_changed() -> void:
-    print("tree size changed")
     scroll_container.custom_minimum_size.y = clampi(int(node_list_tree.size.y), scroll_min_height, scroll_max_height)
 
 func set_max_popup_height() -> void:

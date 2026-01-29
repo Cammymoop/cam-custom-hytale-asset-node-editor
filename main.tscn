@@ -295,6 +295,7 @@ scroll_vertical_enabled = false
 [node name="ShowAllButton" type="CheckButton" parent="PopupMenuRoot/CenterContainer/NewGNMenu/MarginContainer/VBoxContainer" unique_id=849586667]
 layout_mode = 2
 size_flags_horizontal = 4
+mouse_default_cursor_shape = 2
 text = "Show All"
 
 [connection signal="ready" from="AssetNodeGraphEdit/TestGN" to="AssetNodeGraphEdit/TestGN" method="hide"]
