@@ -131,10 +131,11 @@ func _ready() -> void:
         type_id_lookup[type_names[type_id]] = type_id
 
     #cut_nodes_request.connect(_cut_nodes)
-    if test_json_file:
-        load_json_file(test_json_file)
-    else:
-        print("No test JSON file specified")
+    #if test_json_file:
+        #load_json_file(test_json_file)
+    #else:
+        #print("No test JSON file specified")
+    setup_new_graph()
 
 func _process(_delta: float) -> void:
     if Input.is_action_just_pressed("ui_undo"):

@@ -14,9 +14,12 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 
 [application]
 
-config/name="Cam Custom HytaleAssetNode Editor"
-config/description="No Description"
+config/name="Cam Hytale ANE (AssetNodeEditor)"
+config/description="[Early Alpha] A custom, cross-platform Asset Node editor for hytale asset nodes, primarily for worldgen v2"
+config/version="v0.1.0"
 run/main_scene="res://main.tscn"
+config/use_custom_user_dir=true
+config/custom_user_dir_name="CamHytaleANE"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 run/low_processor_mode=true
 config/icon="res://icon.svg"
@@ -67,3 +70,4 @@ show_new_node_menu={
 
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
+textures/vram_compression/import_etc2_astc=true
