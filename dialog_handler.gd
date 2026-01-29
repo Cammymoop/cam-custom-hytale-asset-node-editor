@@ -6,6 +6,9 @@ signal requested_save_file(path: String)
 
 var last_open_from_directory: String = ""
 
+var cur_open_file_dialog: FileDialog = null
+var cur_save_file_dialog: FileDialog = null
+
 func _process(_delta: float) -> void:
     if Input.is_action_just_pressed("open_file_shortcut"):
         show_open_file_dialog()
@@ -13,12 +16,15 @@ func _process(_delta: float) -> void:
         show_save_file_dialog()
 
 func show_open_file_dialog() -> void:
+    remove_old_open_dialog()
     var file_dialog: FileDialog = FileDialog.new()
-    file_dialog.use_native_dialog = true
+    #file_dialog.use_native_dialog = true
+    file_dialog.access = FileDialog.ACCESS_FILESYSTEM
     if last_open_from_directory:
         file_dialog.current_dir = last_open_from_directory
     else:
         file_dialog.current_dir = OS.get_system_dir(OS.SYSTEM_DIR_DOCUMENTS)
+        print("Current directory: %s (%s)" % [file_dialog.current_dir, OS.get_system_dir(OS.SYSTEM_DIR_DOCUMENTS)])
     file_dialog.filters = ["*.json"]
     
     file_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
@@ -26,20 +32,34 @@ func show_open_file_dialog() -> void:
     file_dialog.canceled.connect(on_open_dialog_closed)
     file_dialog.file_selected.connect(on_file_selected)
     
-    file_dialog.popup()
+    print("Showing open file dialog")
+    
+    add_child(file_dialog, true)
+    cur_open_file_dialog = file_dialog
+    file_dialog.popup_file_dialog()
 
 func on_file_selected(path: String) -> void:
+    print("File open location selected: %s" % path)
     last_open_from_directory = path.get_base_dir()
     on_open_dialog_closed()
     requested_open_file.emit(path)
+    
+    remove_old_open_dialog()
 
 func on_open_dialog_closed() -> void:
-    pass
+    remove_old_open_dialog()
+
+func remove_old_open_dialog() -> void:
+    if cur_open_file_dialog:
+        cur_open_file_dialog.queue_free()
+    cur_open_file_dialog = null
 
 
 func show_save_file_dialog() -> void:
+    remove_old_save_dialog()
     var file_dialog: FileDialog = FileDialog.new()
-    file_dialog.use_native_dialog = true
+    file_dialog.access = FileDialog.ACCESS_FILESYSTEM
+    #file_dialog.use_native_dialog = true
     if last_open_from_directory:
         file_dialog.current_dir = last_open_from_directory
     else:
@@ -49,12 +69,22 @@ func show_save_file_dialog() -> void:
     file_dialog.add_filter("*.json", "JSON files")
     file_dialog.canceled.connect(on_save_dialog_closed)
     file_dialog.file_selected.connect(on_file_save_location_selected)
-    file_dialog.popup()
+    
+    add_child(file_dialog, true)
+    cur_save_file_dialog = file_dialog
+    file_dialog.popup_file_dialog()
+
+func remove_old_save_dialog() -> void:
+    if cur_save_file_dialog:
+        cur_save_file_dialog.queue_free()
+    cur_save_file_dialog = null
 
 func on_save_dialog_closed() -> void:
-    pass
+    remove_old_save_dialog()
 
 func on_file_save_location_selected(path: String) -> void:
     last_open_from_directory = path.get_base_dir()
     on_save_dialog_closed()
     requested_save_file.emit(path)
+    
+    remove_old_save_dialog()

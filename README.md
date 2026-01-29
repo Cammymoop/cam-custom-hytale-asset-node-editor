@@ -11,6 +11,7 @@ Early Alpha
 * Loading a Biome JSON file
 * Saving to a new JSON file (keep backups if saving over your work!)
 * Adding nodes either with the menu (space) or by dragging out a new connection
+  * Deleting nodes is currently impossible, please stand by ...
 * Modifying existing nodes connections
 * Cutting connections by drawing a line (ctr+right click)
 * Windows and Linux support (Mac build exists but is currently completely untested and not properly signed)

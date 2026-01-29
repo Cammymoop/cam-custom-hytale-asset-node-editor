@@ -13,6 +13,7 @@ var loaded: = false
 
 var global_gn_counter: int = 0
 
+const DEFAULT_HY_WORKSPACE_ID: String = "HytaleGenerator - Biome"
 var hy_workspace_id: String = ""
 
 var all_asset_nodes: Array[HyAssetNode] = []
@@ -179,6 +180,7 @@ func on_file_menu_id_pressed(id: int) -> void:
 
 func setup_new_graph() -> void:
     clear_graph()
+    hy_workspace_id = DEFAULT_HY_WORKSPACE_ID
     var new_root_node: HyAssetNode = get_new_asset_node("BiomeRoot")
     root_node = new_root_node
     var screen_center_pos: Vector2 = get_viewport_rect().size / 2
@@ -322,6 +324,7 @@ func _register_asset_node(asset_node: HyAssetNode) -> void:
         all_asset_node_ids.append(asset_node.an_node_id)
 
 func _delete_request(delete_gn_names: Array[StringName]) -> void:
+    return
     for gn_name in delete_gn_names:
         var gn: GraphNode = get_node(NodePath(gn_name))
         if gn:
@@ -1228,7 +1231,7 @@ func serialize_node_editor_metadata() -> Dictionary:
     return serialized_metadata
 
 func test_reserialize_to_file(data_from_json: Dictionary) -> void:
-    var file_path: = "res://test_files/test_reserialize.json"
+    var file_path: = "user://test_reserialize.json"
     var file: = FileAccess.open(file_path, FileAccess.WRITE)
     if not file:
         print_debug("Error opening JSON file for writing (test reserialize): %s" % file_path)
@@ -1330,6 +1333,7 @@ func can_dissolve_gn(graph_node: GraphNode) -> bool:
     return true
 
 func _on_graph_node_right_clicked(graph_node: CustomGraphNode) -> void:
+    print("Graph node right clicked: %s" % graph_node.name)
     if connection_cut_active:
         return
     if not graph_node.selectable:
