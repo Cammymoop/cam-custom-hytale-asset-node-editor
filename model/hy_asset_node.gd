@@ -1,6 +1,8 @@
 class_name HyAssetNode
 extends Resource
 
+signal settings_changed()
+
 @export var an_node_id: String = ""
 @export var an_name: String = ""
 @export var an_type: String = ""
@@ -51,6 +53,10 @@ func num_connected_asset_nodes(conn_name: String) -> int:
     if conn_type == TYPE_ARRAY:
         return connections[conn_name].size()
     return 0
+
+func update_setting_value(setting_name: String, value: Variant) -> void:
+    settings[setting_name] = value
+    settings_changed.emit()
 
 func _num_connected_asset_nodes_full(conn_name: String) -> int:
     if not connected_node_counts.has(conn_name):
@@ -194,6 +200,27 @@ func _get_connected_node_list(conn_name: String) -> Array[HyAssetNode]:
         node_list.append(connected_asset_nodes["%s:%d" % [conn_name, i]])
     return node_list
 
+func sort_connections_by_gn_pos(gn_lookup: Dictionary[String, GraphNode]) -> void:
+    var sort_by_gn_pos: = func (a: HyAssetNode, b: HyAssetNode) -> bool:
+        var a_gn: = gn_lookup.get(a.an_node_id, null) as GraphNode
+        var b_gn: = gn_lookup.get(b.an_node_id, null) as GraphNode
+        if not a_gn or not b_gn:
+            return a_gn != null
+        elif a_gn.position_offset.y != b_gn.position_offset.y:
+            return a_gn.position_offset.y < b_gn.position_offset.y
+        else:
+            return a_gn.position_offset.x < b_gn.position_offset.x
+    
+    var conn_names: Array[String] = connection_list
+    for conn_name in conn_names:
+        var sorted_nodes: Array[HyAssetNode] = get_all_connected_nodes(conn_name)
+        if sorted_nodes.size() < 2:
+            continue
+        sorted_nodes.sort_custom(sort_by_gn_pos)
+        for i in range(sorted_nodes.size()):
+            connected_asset_nodes["%s:%d" % [conn_name, i]] = sorted_nodes[i]
+
+
 func serialize_me(schema: AssetNodesSchema, gn_lookup: Dictionary[String, GraphNode]) -> Dictionary:
     if not has_inner_asset_nodes:
         print_debug("Serializing unpopulated asset node (%s)" % an_node_id)
@@ -205,7 +232,7 @@ func serialize_me(schema: AssetNodesSchema, gn_lookup: Dictionary[String, GraphN
     
     for other_key in other_metadata.keys():
         serialized_data[other_key] = other_metadata[other_key]
-
+    
     if not an_type or an_type == "Unknown" or not schema.node_schema.has(an_type):
         print_debug("Warning: Serializing an asset node with unknown type: %s (%s)" % [an_type, an_node_id])
         serialized_data["no_schema"] = true
@@ -241,21 +268,8 @@ func serialize_me(schema: AssetNodesSchema, gn_lookup: Dictionary[String, GraphN
             var is_multi: bool = node_schema["connections"][conn_name].get("multi", false)
             if is_multi:
                 serialized_data[conn_name] = []
-                var sort_by_gn_pos: = func (a: HyAssetNode, b: HyAssetNode) -> bool:
-                    var a_gn: = gn_lookup.get(a.an_node_id, null) as GraphNode
-                    var b_gn: = gn_lookup.get(b.an_node_id, null) as GraphNode
-                    if a_gn and not b_gn:
-                        return true
-                    elif not a_gn and b_gn:
-                        return false
-                    elif a_gn.position_offset.y != b_gn.position_offset.y:
-                        return a_gn.position_offset.y < b_gn.position_offset.y
-                    else:
-                        return a_gn.position_offset.x < b_gn.position_offset.x
-
                 for connected_an in get_all_connected_nodes(conn_name):
                     serialized_data[conn_name].append(connected_an.serialize_me(schema, gn_lookup))
-                serialized_data[conn_name].sort_custom(sort_by_gn_pos)
             else:
                 serialized_data[conn_name] = get_connected_node(conn_name, 0).serialize_me(schema, gn_lookup)
 

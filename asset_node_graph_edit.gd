@@ -21,7 +21,7 @@ var floating_tree_roots: Array[HyAssetNode] = []
 var root_node: HyAssetNode = null
 
 @onready var special_gn_factory: SpecialGNFactory = $SpecialGNFactory
-@onready var dialog_handler: DialogHandler = $DialogHandler
+@onready var dialog_handler: DialogHandler = get_parent().get_node("DialogHandler")
 
 var asset_node_meta: Dictionary[String, Dictionary] = {}
 
@@ -63,10 +63,6 @@ var temp_x_elements: = 10
 @onready var grid_logical_enabled: = show_grid
 
 var copied_nodes: Array[GraphNode] = []
-
-var special_handling_types: Array[String] = [
-    "ManualCurve",
-]
 
 var context_menu_gn: GraphNode = null
 var context_menu_movement_acc: = 0.0
@@ -723,10 +719,14 @@ func should_be_special_gn(asset_node: HyAssetNode) -> bool:
 func new_graph_node(asset_node: HyAssetNode, root_asset_node: HyAssetNode, newly_created: bool) -> CustomGraphNode:
     var graph_node: CustomGraphNode = null
     var is_special: = should_be_special_gn(asset_node)
+    var settings_syncer: SettingsSyncer = null
     if is_special:
         graph_node = special_gn_factory.make_special_gn(root_asset_node, asset_node, newly_created)
     else:
         graph_node = CustomGraphNode.new()
+        settings_syncer = SettingsSyncer.new()
+        settings_syncer.set_asset_node(asset_node)
+        graph_node.add_child(settings_syncer, true)
     
     graph_node.name = get_graph_node_name(graph_node.name if graph_node.name else &"GN")
     
@@ -818,6 +818,7 @@ func new_graph_node(asset_node: HyAssetNode, root_asset_node: HyAssetNode, newly
                     if setting_type == TYPE_FLOAT or setting_type == TYPE_INT:
                         s_edit.alignment = HORIZONTAL_ALIGNMENT_RIGHT
                 slot_node.add_child(s_edit, true)
+                settings_syncer.add_watched_setting(setting_name, s_edit, setting_type)
                 
                 graph_node.add_child(slot_node, true)
             else:
@@ -1122,6 +1123,35 @@ func save_to_json_file(file_path: String) -> void:
     file.close()
     prints("Saved asset node graph to JSON file: %s" % file_path)
 
+func find_parent_asset_node(an: HyAssetNode) -> HyAssetNode:
+    if an == root_node:
+        return null
+    var main_tree_result: = _find_parent_asset_node_in_tree(root_node, an)
+    if main_tree_result[0]:
+        return main_tree_result[1]
+    for floating_tree_root in floating_tree_roots:
+        if floating_tree_root == an:
+            return null
+        var floating_tree_result: = _find_parent_asset_node_in_tree(floating_tree_root, an)
+        if floating_tree_result[0]:
+            return floating_tree_result[1]
+    return null
+
+func _find_parent_asset_node_in_tree(current_an: HyAssetNode, looking_for_an: HyAssetNode) -> Array:
+    if current_an == looking_for_an:
+        return [true, null]
+    
+    var conn_names: Array[String] = current_an.connection_list
+    for conn_name in conn_names:
+        for connected_an in current_an.get_all_connected_nodes(conn_name):
+            var branch_result: = _find_parent_asset_node_in_tree(connected_an, looking_for_an)
+            if branch_result[0]:
+                if not branch_result[1]:
+                    return [true, current_an]
+                return branch_result
+    
+    return [false, null]
+
 func get_asset_node_graph_json_str() -> String:
     var serialized_data: Dictionary = serialize_asset_node_graph()
     var json_str: = JSON.stringify(serialized_data, "  " if save_formatted_json else "", false)
@@ -1131,10 +1161,22 @@ func get_asset_node_graph_json_str() -> String:
     return json_str
 
 func serialize_asset_node_graph() -> Dictionary:
+    for an in all_asset_nodes:
+        an.sort_connections_by_gn_pos(gn_lookup)
+
     var serialized_data: Dictionary = root_node.serialize_me(schema, gn_lookup)
     serialized_data["$NodeEditorMetadata"] = serialize_node_editor_metadata()
     
     return serialized_data
+
+func _set_child_sorting_metadata(an: HyAssetNode) -> void:
+    var conn_names: Array[String] = an.connection_list
+    for conn_name in conn_names:
+        var connected_nodes: Array[HyAssetNode] = an.get_all_connected_nodes(conn_name)
+        for idx_local in connected_nodes.size():
+            connected_nodes[idx_local].set_meta("metadata_parent", an)
+            connected_nodes[idx_local].set_meta("metadata_index_local", idx_local)
+            _set_child_sorting_metadata(connected_nodes[idx_local])
 
 func serialize_node_editor_metadata() -> Dictionary:
     var serialized_metadata: Dictionary = {}
@@ -1145,9 +1187,28 @@ func serialize_node_editor_metadata() -> Dictionary:
         return {}
     var fallback_pos: = ((root_gn.position_offset - Vector2(200, 200)) / json_positions_scale).round()
 
+    var roots: Array[HyAssetNode] = [root_node]
+    roots.append_array(floating_tree_roots)
+    for root in roots:
+        root.set_meta("metadata_index_local", 0)
+        _set_child_sorting_metadata(root)
+
     for an in all_asset_nodes:
         var gn: = gn_lookup.get(an.an_node_id, null) as GraphNode
-        var gn_pos: Vector2 = (gn.position_offset / json_positions_scale).round() if gn else fallback_pos
+        var gn_pos: Vector2 = fallback_pos
+        if gn:
+            gn_pos = (gn.position_offset / json_positions_scale).round()
+        else:
+            var parent_an: HyAssetNode = an
+            var parent_gn: GraphNode = null
+            while parent_gn == null and parent_an != null:
+                parent_an = parent_an.get_meta("metadata_parent", null)
+                parent_gn = gn_lookup.get(parent_an.an_node_id, null) as GraphNode
+            if parent_gn:
+                var my_idx_local: int = an.get_meta("metadata_index_local", 0)
+                var unadjusted_pos: = parent_gn.position_offset + Vector2(parent_gn.size.x + 100, 0)
+                unadjusted_pos += Vector2.ONE * 10 * my_idx_local
+                gn_pos = (unadjusted_pos / json_positions_scale).round()
         var node_meta_stuff: Dictionary = {
             "$Position": {
                 "$x": gn_pos.x,
