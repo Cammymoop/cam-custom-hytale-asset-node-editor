@@ -7,7 +7,7 @@
 Early Alpha
 
 ### What works:
-* Biome workspace only
+* Biome workspace (only)
 * Loading a Biome JSON file
 * Saving to a new JSON file (keep backups if saving over your work!)
 * Adding nodes either with the menu (space) or by dragging out a new connection
@@ -17,6 +17,7 @@ Early Alpha
 * Windows and Linux support (Mac build exists but is currently completely untested and not properly signed)
 
 ### What doesn't work:
+* Will not properly open other workspaces besides the "HytaleGenerator - Biome" one yet (e.g. graphs with a Density node at the root)
 * Copy/Cut/Paste is not yet implemented
 * Node Comments, Separate Comments, and Groups are not yet implemented
 * Custom Node Titles are supported but there's no way to rename nodes in the editor itself yet
