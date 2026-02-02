@@ -32,10 +32,6 @@ enum NodeContextMenu {
     DISSOLVE_NODE = 2,
 }
 
-@export var no_left_types: Array[String] = [
-    "BiomeRoot",
-]
-
 
 var gn_lookup: Dictionary[String, GraphNode] = {}
 var an_lookup: Dictionary[String, HyAssetNode] = {}
@@ -182,7 +178,7 @@ func on_file_menu_id_pressed(id: int) -> void:
 func setup_new_graph() -> void:
     clear_graph()
     hy_workspace_id = DEFAULT_HY_WORKSPACE_ID
-    var new_root_node: HyAssetNode = get_new_asset_node("BiomeRoot")
+    var new_root_node: HyAssetNode = get_new_asset_node("Biome")
     root_node = new_root_node
     var screen_center_pos: Vector2 = get_viewport_rect().size / 2
     var new_gn: CustomGraphNode = make_and_add_graph_node(new_root_node, screen_center_pos)
@@ -842,13 +838,13 @@ func new_graph_node(asset_node: HyAssetNode, root_asset_node: HyAssetNode, newly
     if is_special:
         pass
     else:
-        var num_inputs: = 1
-        if asset_node.an_type in no_left_types:
-            num_inputs = 0
-        
         var node_schema: Dictionary = {}
         if asset_node.an_type and asset_node.an_type != "Unknown":
             node_schema = schema.node_schema[asset_node.an_type]
+        
+        var num_inputs: = 1
+        if node_schema and node_schema.get("no_output", false):
+            num_inputs = 0
         
         var connection_names: Array
         var connection_types: Array[int]
@@ -916,6 +912,7 @@ func new_graph_node(asset_node: HyAssetNode, root_asset_node: HyAssetNode, newly
             else:
                 var slot_node: = Label.new()
                 slot_node.name = "Slot%d" % i
+                slot_node.size_flags_horizontal = Control.SIZE_SHRINK_END
                 graph_node.add_child(slot_node, true)
                 if i < num_inputs:
                     graph_node.set_slot_enabled_left(i, true)

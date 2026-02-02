@@ -312,13 +312,13 @@ func get_id_prefix_for_node_type(node_type: String) -> String:
 }
 
 @export var workspace_root_types: Dictionary[String, String] = {
-    "HytaleGenerator - Biome": "BiomeRoot",
+    "HytaleGenerator - Biome": "Biome",
 }
 
 @export var node_schema: Dictionary[String, Dictionary] = {
-    "BiomeRoot": {
-		"id_prefix_override": "Biome",
+    "Biome": {
         "display_name": "Biome",
+        "no_output": true,
         "output_value_type": "__ROOT_ONLY",
         "settings": {
             "Name": { "gd_type": TYPE_STRING, "default_value": "" },

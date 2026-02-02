@@ -26,9 +26,22 @@ func update_port_colors(graph_edit: AssetNodeGraphEdit, asset_node: HyAssetNode)
 
         var output_color: Color = ThemeColorVariants.theme_colors[my_output_type_color_name]
         set_slot_color_left(0, output_color)
+    
+    var slot_control_nodes: Array[Control] = get_slot_control_nodes()
 
     var connection_list: Array[String] = asset_node.connection_list
     for conn_idx in connection_list.size():
         var conn_value_type: String = graph_edit.schema.node_schema[asset_node.an_type]["connections"][connection_list[conn_idx]].get("value_type", "")
         var conn_color: Color = TypeColors.get_actual_color_for_type(conn_value_type)
         set_slot_color_right(conn_idx, conn_color)
+        if conn_idx < slot_control_nodes.size() and slot_control_nodes[conn_idx] is Label:
+            slot_control_nodes[conn_idx].add_theme_color_override("font_color", TypeColors.get_label_color_for_type(conn_value_type))
+            slot_control_nodes[conn_idx].add_theme_stylebox_override("normal", TypeColors.get_label_stylebox_for_type(conn_value_type))
+
+func get_slot_control_nodes() -> Array[Control]:
+    var slot_control_nodes: Array[Control] = []
+    for child in get_children():
+        if not child is Control:
+            continue
+        slot_control_nodes.append(child)
+    return slot_control_nodes
