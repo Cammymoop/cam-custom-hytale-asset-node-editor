@@ -201,6 +201,7 @@ func setup_new_graph() -> void:
     var screen_center_pos: Vector2 = get_viewport_rect().size / 2
     var new_gn: CustomGraphNode = make_and_add_graph_node(new_root_node, screen_center_pos)
     gn_lookup[new_root_node.an_node_id] = new_gn
+    loaded = true
 
 func is_mouse_wheel_event(event: InputEvent) -> bool:
     return event is InputEventMouseButton and (
@@ -627,8 +628,7 @@ func parse_asset_node_deep(old_style: bool, asset_node_data: Dictionary, output_
     return res
 
 func parse_root_asset_node(base_node: Dictionary) -> void:
-    hy_workspace_id = "NONE"
-    var parsed_node_count: = 0
+    hy_workspace_id = ""
     var old_style_format: = false
     if base_node.has("$WorkspaceID"):
         old_style_format = true
@@ -639,17 +639,19 @@ func parse_root_asset_node(base_node: Dictionary) -> void:
         push_error("Not old-style but Root node does not have $NodeEditorMetadata")
         return
     else:
-        hy_workspace_id = base_node["$NodeEditorMetadata"].get("$WorkspaceID", "NONE")
+        hy_workspace_id = base_node["$NodeEditorMetadata"].get("$WorkspaceID", "")
     
-    if not hy_workspace_id or hy_workspace_id == "NONE":
+    if not hy_workspace_id:
         print_debug("No workspace ID found in root node or editor metadata")
-        push_error("No workspace ID found in root node or editor metadata")
+        push_warning("No workspace ID found in root node or editor metadata")
         return
 
-    var root_node_type: String = schema.resolve_asset_node_type(base_node.get("Type", "NO_TYPE_KEY"), "ROOT|%s" % hy_workspace_id, base_node.get("$NodeId", ""))
+    var root_node_type: String = schema.resolve_root_asset_node_type(hy_workspace_id, base_node)
 
     if old_style_format and not base_node.get("$NodeId", ""):
         base_node["$NodeId"] = get_unique_id(schema.get_id_prefix_for_node_type(root_node_type))
+
+    @warning_ignore("unused_variable") var parsed_node_count: = 0
 
     if not old_style_format:
         var meta_data: = base_node["$NodeEditorMetadata"] as Dictionary

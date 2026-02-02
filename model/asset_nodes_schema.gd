@@ -14,6 +14,46 @@ func get_node_type_default_name(node_type: String) -> String:
         return node_type
     return node_schema[node_type]["display_name"]
 
+func resolve_root_asset_node_type(workspace_id: String, node_data: Dictionary) -> String:
+    if not workspace_id:
+        if node_data.get("$NodeId", ""):
+            print_debug("No workspace ID provided, detecting from node ID")
+            return _unknown_output_type_inference(node_data["$NodeId"])
+        else:
+            print_debug("No workspace ID provided, and no node ID provided, cannot infer type")
+            return "Unknown"
+
+    if workspace_id in workspace_no_output_types:
+        if node_data.get("$NodeId", ""):
+            var inferred_type: = _unknown_output_type_inference(node_data["$NodeId"])
+            if inferred_type != workspace_no_output_types[workspace_id]:
+                push_warning("Root Node has inferred type (from NodeId): %s, but workspace ID (%s) should be type: %s" % [inferred_type, workspace_id, workspace_no_output_types[workspace_id]])
+                # TODO surface warnings to user
+        return workspace_no_output_types[workspace_id]
+    
+    elif workspace_id in workspace_root_output_types:
+        var expected_output_type: = workspace_root_output_types[workspace_id]
+        var node_type_value: String = node_data.get("Type", "")
+        var type_key: = "%s|%s" % [expected_output_type, node_type_value]
+
+        var resolved_type: = "Unknown"
+        if not type_key in node_types:
+            push_warning("resolve root asset node type: Root node has incorrect output type (%s) for workspace ID: %s" % [expected_output_type, workspace_id])
+            # TODO surface warnings to user
+            if node_data.get("$NodeId", ""):
+                resolved_type = _unknown_output_type_inference(node_data["$NodeId"])
+            else:
+                push_warning("resolve root asset node type: Output value mismatch and no node ID provided, unable to infer type")
+                return "Unknown"
+        else:
+            resolved_type = node_types[type_key]
+
+        return resolved_type
+    else:
+        push_warning("resolve root asset node type: Unknown workspace ID: %s" % workspace_id)
+        return _unknown_output_type_inference(node_data.get("$NodeId", ""))
+
+
 func resolve_asset_node_type(type_key: String, output_value_type: String, node_id: String = "") -> String:
     if output_value_type == "":
         if node_id == "":
@@ -22,14 +62,16 @@ func resolve_asset_node_type(type_key: String, output_value_type: String, node_i
         else:
             return _unknown_output_type_inference(node_id)
     if output_value_type.begins_with("ROOT"):
+        push_warning("Using deprecated path to infer root node type")
         var parts: = output_value_type.split("|")
         if parts.size() != 2:
             print_debug("Invalid root node type key: %s" % output_value_type)
             return "Unknown"
-        if parts[1] not in workspace_root_types:
+        if parts[1] in workspace_no_output_types:
+            return workspace_no_output_types[parts[1]]
+        else:
             print_debug("Invalid root node type lookup (workspace id): %s" % parts[1])
             return "Unknown"
-        return workspace_root_types[parts[1]]
     else:
         if type_key == "NO_TYPE_KEY":
             type_key = ""
@@ -311,8 +353,14 @@ func get_id_prefix_for_node_type(node_type: String) -> String:
     "Runtime|": "Runtime",
 }
 
-@export var workspace_root_types: Dictionary[String, String] = {
+@export var workspace_no_output_types: Dictionary[String, String] = {
     "HytaleGenerator - Biome": "Biome",
+}
+
+@export var workspace_root_output_types: Dictionary[String, String] = {
+    "HytaleGenerator - Density": "Density",
+    "HytaleGenerator - BlockMask": "BlockMask",
+    "HytaleGenerator - Assignments": "Assignments",
 }
 
 @export var node_schema: Dictionary[String, Dictionary] = {
