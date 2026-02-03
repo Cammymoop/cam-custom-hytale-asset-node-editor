@@ -2,8 +2,24 @@ extends Node
 class_name SettingsSyncer
 
 var asset_node: HyAssetNode
-var watched_settings: Dictionary[String, NodePath] = {}
-var setting_gd_types: Dictionary[String, int] = {}
+@export var watched_settings: Dictionary[String, NodePath] = {}
+@export var setting_gd_types: Dictionary[String, int] = {}
+
+func _ready() -> void:
+    rebind_signals()
+
+func rebind_signals() -> void:
+    for setting_name in watched_settings.keys():
+        var input_control: = get_node(watched_settings[setting_name]) as Control
+        if input_control is GNNumberEdit:
+            if not input_control.value_changed.is_connected(on_value_changed):
+                input_control.value_changed.connect(on_value_changed.bind(setting_name))
+        elif input_control is LineEdit:
+            if not input_control.text_changed.is_connected(on_value_changed):
+                input_control.text_changed.connect(on_value_changed.bind(setting_name))
+        elif input_control is BaseButton and input_control.toggle_mode:
+            if not input_control.toggled.is_connected(on_value_changed):
+                input_control.toggled.connect(on_value_changed.bind(setting_name))
 
 func set_asset_node(the_asset_node: HyAssetNode) -> void:
     asset_node = the_asset_node

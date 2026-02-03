@@ -218,11 +218,16 @@ func setup_new_graph() -> void:
     clear_graph()
     hy_workspace_id = DEFAULT_HY_WORKSPACE_ID
     var new_root_node: HyAssetNode = get_new_asset_node("Biome")
-    root_node = new_root_node
+    set_root_node(new_root_node)
     var screen_center_pos: Vector2 = get_viewport_rect().size / 2
     var new_gn: CustomGraphNode = make_and_add_graph_node(new_root_node, screen_center_pos, true, true)
     gn_lookup[new_root_node.an_node_id] = new_gn
     loaded = true
+
+func set_root_node(new_root_node: HyAssetNode) -> void:
+    root_node = new_root_node
+    if root_node in floating_tree_roots:
+        floating_tree_roots.erase(root_node)
 
 func snap_gn(gn: GraphNode) -> void:
     if snapping_enabled:
@@ -358,6 +363,8 @@ func remove_asset_node(asset_node: HyAssetNode) -> void:
 func _erase_asset_node(asset_node: HyAssetNode) -> void:
     all_asset_nodes.erase(asset_node)
     all_asset_node_ids.erase(asset_node.an_node_id)
+    if asset_node in floating_tree_roots:
+        floating_tree_roots.erase(asset_node)
 
 func duplicate_and_add_asset_node(asset_node: HyAssetNode, new_gn: GraphNode = null) -> HyAssetNode:
     var id_prefix: = schema.get_id_prefix_for_node_type(asset_node.an_type)
@@ -369,6 +376,7 @@ func duplicate_and_add_asset_node(asset_node: HyAssetNode, new_gn: GraphNode = n
     print("new id for copy: %s" % new_id_for_copy)
     var asset_node_copy: = asset_node.get_shallow_copy(new_id_for_copy)
     _register_asset_node(asset_node_copy)
+    floating_tree_roots.append(asset_node_copy)
     print("%s registered asset nodes" % all_asset_nodes.size())
     an_lookup[asset_node_copy.an_node_id] = asset_node_copy
     if new_gn:
@@ -384,7 +392,9 @@ func duplicate_and_add_filtered_an_tree(root_asset_node: HyAssetNode, asset_node
         for connected_an in root_asset_node.get_all_connected_nodes(conn_name):
             if connected_an not in asset_node_set:
                 continue
-            new_root_an.append_node_to_connection(conn_name, duplicate_and_add_filtered_an_tree(connected_an, asset_node_set))
+            var new_an: HyAssetNode = duplicate_and_add_filtered_an_tree(connected_an, asset_node_set)
+            floating_tree_roots.erase(new_an)
+            new_root_an.append_node_to_connection(conn_name, new_an)
     
     return new_root_an
 
@@ -468,6 +478,7 @@ func get_new_asset_node(asset_node_type: String, id_prefix: String = "") -> HyAs
     new_asset_node.an_type = asset_node_type
     new_asset_node.an_name = schema.get_node_type_default_name(asset_node_type)
     _register_asset_node(new_asset_node)
+    floating_tree_roots.append(new_asset_node)
     an_lookup[new_asset_node.an_node_id] = new_asset_node
     init_asset_node(new_asset_node)
     new_asset_node.has_inner_asset_nodes = true
@@ -603,7 +614,9 @@ func paste_from_external() -> void:
     var old_json_scale: = json_positions_scale
     json_positions_scale = Vector2.ONE
     var screen_center_pos: Vector2 = scroll_offset + (get_viewport_rect().size / (2 * zoom))
-    var added_gns: = make_and_position_graph_nodes_for_trees(get_an_roots_within_set(copied_external_ans), false, screen_center_pos)
+    var an_roots: Array[HyAssetNode] = get_an_roots_within_set(copied_external_ans)
+    floating_tree_roots.append_array(an_roots)
+    var added_gns: = make_and_position_graph_nodes_for_trees(an_roots, false, screen_center_pos)
     json_positions_scale = old_json_scale
     
     cur_added_connections = get_internal_connections_for_gns(added_gns)
@@ -614,6 +627,8 @@ func paste_from_external() -> void:
 func _add_pasted_nodes(gns: Array[GraphNode], asset_node_set: Array[HyAssetNode], make_duplicates: bool) -> Array[GraphNode]:
     var pasted_gns: Array[GraphNode] = []
     if not make_duplicates:
+        var pasted_an_roots: Array[HyAssetNode] = get_an_roots_within_set(asset_node_set)
+        floating_tree_roots.append_array(pasted_an_roots)
         pasted_gns = gns
         for gn in gns:
             var owned_ans: Array[HyAssetNode] = get_gn_own_asset_nodes(gn, asset_node_set)
@@ -633,18 +648,25 @@ func _add_pasted_nodes(gns: Array[GraphNode], asset_node_set: Array[HyAssetNode]
 func duplicate_graph_node(gn: CustomGraphNode, allowed_an_list: Array[HyAssetNode] = []) -> CustomGraphNode:
     var duplicate_gn: CustomGraphNode
     if gn.get_meta("is_special_gn", false):
+        print("duplicating special graph node")
         if not allowed_an_list:
             allowed_an_list = get_gn_own_asset_nodes(gn)
         duplicate_gn = special_gn_factory.make_duplicate_special_gn(gn, allowed_an_list)
     else:
-        duplicate_gn = gn.duplicate()
-        var old_an: HyAssetNode = safe_get_an_from_gn(gn, allowed_an_list)
-        if old_an:
-            var new_an: = duplicate_and_add_asset_node(old_an, duplicate_gn)
-        elif duplicate_gn.get_meta("hy_asset_node_id", ""):
-            push_warning("Duplicated a graph node which has asset node ID %s, but no asset node was found in the registry or extra list" % gn.get_meta("hy_asset_node_id"))
-            duplicate_gn.remove_meta("hy_asset_node_id")
+        if not gn.get_meta("hy_asset_node_id", ""):
+            print("duplicating unsynced graph node")
+            duplicate_gn = gn.duplicate()
+        else:
+            print("duplicating synced graph node")
+            var old_an: HyAssetNode = safe_get_an_from_gn(gn, allowed_an_list)
+            duplicate_gn = _duplicate_synced_graph_node(gn, old_an)
     init_duplicate_graph_node(duplicate_gn, gn)
+    return duplicate_gn
+
+func _duplicate_synced_graph_node(gn: CustomGraphNode, old_an: HyAssetNode) -> CustomGraphNode:
+    var duplicate_gn: CustomGraphNode = gn.duplicate()
+    var new_an: = duplicate_and_add_asset_node(old_an, duplicate_gn)
+    duplicate_gn.fix_duplicate_settings_syncer(new_an)
     return duplicate_gn
 
 func safe_get_an_from_gn(gn: CustomGraphNode, extra_an_list: Array[HyAssetNode] = []) -> HyAssetNode:
@@ -897,7 +919,7 @@ func parse_root_asset_node(base_node: Dictionary) -> void:
         return
 
     var parse_result: = parse_asset_node_deep(old_style_format, base_node, "", root_node_type)
-    root_node = parse_result["base"]
+    set_root_node(parse_result["base"])
     all_asset_nodes.append_array(parse_result["all_nodes"])
     parsed_node_count += parse_result["all_nodes"].size()
     #print("Root node parsed, %d nodes" % parse_result["all_nodes"].size(), " (total: %d)" % parsed_node_count)
@@ -1117,9 +1139,7 @@ func new_graph_node(asset_node: HyAssetNode, newly_created: bool) -> CustomGraph
         graph_node = special_gn_factory.make_special_gn(asset_node, newly_created)
     else:
         graph_node = CustomGraphNode.new()
-        settings_syncer = SettingsSyncer.new()
-        settings_syncer.set_asset_node(asset_node)
-        graph_node.add_child(settings_syncer, true)
+        settings_syncer = graph_node.make_settings_syncer(asset_node)
     
     graph_node.name = new_graph_node_name(graph_node.name if graph_node.name else &"GN")
     
@@ -1215,9 +1235,9 @@ func new_graph_node(asset_node: HyAssetNode, newly_created: bool) -> CustomGraph
                     if setting_type == TYPE_FLOAT or setting_type == TYPE_INT:
                         s_edit.alignment = HORIZONTAL_ALIGNMENT_RIGHT
                 slot_node.add_child(s_edit, true)
-                settings_syncer.add_watched_setting(setting_name, s_edit, setting_type)
-                
                 graph_node.add_child(slot_node, true)
+
+                settings_syncer.add_watched_setting(setting_name, s_edit, setting_type)
             else:
                 var slot_node: = Label.new()
                 slot_node.name = "Slot%d" % i
@@ -1537,6 +1557,7 @@ func remove_graph_node_without_undo(gn: GraphNode) -> void:
     if an_id:
         var asset_node: HyAssetNode = an_lookup.get(an_id, null)
         if asset_node:
+            print("removing asset node: %s" % asset_node.an_node_id)
             remove_asset_node(asset_node)
     remove_child(gn)
 

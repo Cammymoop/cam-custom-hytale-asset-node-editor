@@ -5,6 +5,20 @@ signal was_right_clicked(graph_node: CustomGraphNode)
 
 var node_type_schema: Dictionary
 
+var settings_syncer: SettingsSyncer = null
+
+func make_settings_syncer(asset_node: HyAssetNode) -> SettingsSyncer:
+    settings_syncer = SettingsSyncer.new()
+    settings_syncer.name = "SettingsSyncer"
+    settings_syncer.set_asset_node(asset_node)
+    add_child(settings_syncer, true)
+    return settings_syncer
+
+func fix_duplicate_settings_syncer(asset_node: HyAssetNode) -> void:
+    settings_syncer = $SettingsSyncer as SettingsSyncer
+    assert(settings_syncer != null, "SettingsSyncer not found in duplicate graph node")
+    settings_syncer.set_asset_node(asset_node)
+
 func _gui_input(event: InputEvent) -> void:
     if not event is InputEventMouseButton:
         return
@@ -35,7 +49,7 @@ func update_port_colors() -> void:
     var slot_control_nodes: Array[Control] = get_slot_control_nodes()
 
     if node_type_schema:
-        var conn_names: Array = node_type_schema["connections"].keys()
+        var conn_names: Array = node_type_schema.get("connections", {}).keys()
         for conn_idx in conn_names.size():
             var conn_value_type: String = node_type_schema["connections"][conn_names[conn_idx]].get("value_type", "")
             var conn_color: Color = TypeColors.get_actual_color_for_type(conn_value_type)
