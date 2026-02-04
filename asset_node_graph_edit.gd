@@ -6,8 +6,6 @@ signal finished_saving
 @export var save_formatted_json: = true
 @export_file_path("*.json") var test_json_file: String = ""
 
-@export var schema: AssetNodesSchema
-
 @export var new_node_menu: NewGNMenu
 
 var parsed_json_data: Dictionary = {}
@@ -126,6 +124,8 @@ func _ready() -> void:
         new_node_menu.node_type_picked.connect(on_new_node_type_picked)
         new_node_menu.cancelled.connect(on_new_node_menu_cancelled)
     
+    popup_menu_root.new_file_type_chooser.file_type_chosen.connect(on_new_file_type_chosen)
+    
     setup_menus()
 
     #add_valid_left_disconnect_type(1)
@@ -160,7 +160,7 @@ func _ready() -> void:
     last_menu_hbox_item.add_child(version_label)
     version_label.offset_left = 12
     
-    for val_type_name in schema.value_types:
+    for val_type_name in SchemaManager.schema.value_types:
         var val_type_idx: = type_names.size()
         type_names[val_type_idx] = val_type_name
         add_valid_connection_type(val_type_idx, val_type_idx)
@@ -179,7 +179,8 @@ func _ready() -> void:
         #load_json_file(test_json_file)
     #else:
         #print("No test JSON file specified")
-    setup_new_graph()
+    await get_tree().process_frame
+    popup_menu_root.show_new_file_type_chooser()
 
 func on_files_dropped(dragged_files: PackedStringArray) -> void:
     var json_files: Array[String] = []
@@ -190,6 +191,19 @@ func on_files_dropped(dragged_files: PackedStringArray) -> void:
         return
     var json_file_path: String = json_files[0]
     open_file_with_prompt(json_file_path)
+
+func on_new_file_type_chosen(workspace_id: String) -> void:
+    new_file_with_prompt(workspace_id)
+
+func new_file_with_prompt(workspace_id: String) -> void:
+    if unedited or all_asset_nodes.size() < 2:
+        new_file_real(workspace_id)
+    else:
+        var prompt_text: = "Do you want to save the current file before creating a new file?"
+        popup_menu_root.show_save_confirm(prompt_text, new_file_real.bind(workspace_id))
+
+func new_file_real(workspace_id: String) -> void:
+    setup_new_graph(workspace_id)
 
 func open_file_with_prompt(json_file_path: String) -> void:
     if unedited or all_asset_nodes.size() < 2:
@@ -262,7 +276,7 @@ func on_file_menu_id_pressed(id: int) -> void:
         "Save":
             dialog_handler.show_save_file_dialog()
         "New":
-            setup_new_graph()
+            popup_menu_root.show_new_file_type_chooser()
 
 func setup_settings_menu() -> void:
     settings_menu_btn = preload("res://ui/settings_menu.tscn").instantiate()
@@ -278,10 +292,11 @@ func on_settings_menu_index_pressed(index: int) -> void:
         "Customize Theme Colors":
             popup_menu_root.show_theme_editor()
 
-func setup_new_graph() -> void:
+func setup_new_graph(workspace_id: String = DEFAULT_HY_WORKSPACE_ID) -> void:
     clear_graph()
-    hy_workspace_id = DEFAULT_HY_WORKSPACE_ID
-    var new_root_node: HyAssetNode = get_new_asset_node("Biome")
+    hy_workspace_id = workspace_id
+    var root_node_type: = SchemaManager.schema.resolve_root_asset_node_type(workspace_id, {})
+    var new_root_node: HyAssetNode = get_new_asset_node(root_node_type)
     set_root_node(new_root_node)
     var screen_center_pos: Vector2 = get_viewport_rect().size / 2
     var new_gn: CustomGraphNode = make_and_add_graph_node(new_root_node, screen_center_pos, true, true)
@@ -345,13 +360,13 @@ func _add_connection(from_gn_name: StringName, from_port: int, to_gn_name: Strin
     var to_gn: GraphNode = get_node(NodePath(to_gn_name))
     var from_an: HyAssetNode = an_lookup.get(from_gn.get_meta("hy_asset_node_id", ""))
     var to_an: HyAssetNode = an_lookup.get(to_gn.get_meta("hy_asset_node_id", ""))
-    if from_an.an_type not in schema.node_schema:
+    if from_an.an_type not in SchemaManager.schema.node_schema:
         print_debug("Warning: From node type %s not found in schema" % from_an.an_type)
         connect_node(from_gn_name, from_port, to_gn_name, to_port)
         return
 
     var conn_name: String = from_an.connection_list[from_port]
-    var connect_is_multi: bool = schema.node_schema[from_an.an_type]["connections"][conn_name].get("multi", false)
+    var connect_is_multi: bool = SchemaManager.schema.node_schema[from_an.an_type]["connections"][conn_name].get("multi", false)
     if connect_is_multi or from_an.num_connected_asset_nodes(conn_name) == 0:
         from_an.append_node_to_connection(conn_name, to_an)
     else:
@@ -431,7 +446,7 @@ func _erase_asset_node(asset_node: HyAssetNode) -> void:
         floating_tree_roots.erase(asset_node)
 
 func duplicate_and_add_asset_node(asset_node: HyAssetNode, new_gn: GraphNode = null) -> HyAssetNode:
-    var id_prefix: = schema.get_id_prefix_for_node_type(asset_node.an_type)
+    var id_prefix: String = SchemaManager.schema.get_id_prefix_for_node_type(asset_node.an_type)
     if not asset_node.an_node_id:
         push_warning("The asset node being duplicated had no ID")
         asset_node.an_node_id = get_unique_an_id(id_prefix)
@@ -504,7 +519,7 @@ func _connect_right_request(from_gn_name: StringName, from_port: int, dropped_po
     }
     var from_an: HyAssetNode = an_lookup.get(get_node(NodePath(from_gn_name)).get_meta("hy_asset_node_id", ""), null)
     if from_an:
-        var from_node_schema: Dictionary = schema.node_schema[from_an.an_type]
+        var from_node_schema: Dictionary = SchemaManager.schema.node_schema[from_an.an_type]
         next_drop_conn_value_type = from_node_schema["connections"][from_an.connection_list[from_port]].get("value_type", "")
         new_node_menu.open_menu(true, next_drop_conn_value_type)
     else:
@@ -518,7 +533,7 @@ func _connect_left_request(to_gn_name: StringName, to_port: int, dropped_pos: Ve
     }
     var to_an: HyAssetNode = an_lookup.get(get_node(NodePath(to_gn_name)).get_meta("hy_asset_node_id", ""), null)
     if to_an:
-        var to_node_schema: Dictionary = schema.node_schema[to_an.an_type]
+        var to_node_schema: Dictionary = SchemaManager.schema.node_schema[to_an.an_type]
         next_drop_conn_value_type = to_node_schema["output_value_type"]
         new_node_menu.open_menu(false, next_drop_conn_value_type)
     else:
@@ -537,7 +552,7 @@ func get_unique_an_id(id_prefix: String = "") -> String:
 
 func get_new_asset_node(asset_node_type: String, id_prefix: String = "") -> HyAssetNode:
     if id_prefix == "" and asset_node_type and asset_node_type != "Unknown":
-        id_prefix = schema.get_id_prefix_for_node_type(asset_node_type)
+        id_prefix = SchemaManager.schema.get_id_prefix_for_node_type(asset_node_type)
     elif id_prefix == "":
         print_debug("New asset node: No ID prefix provided, and asset node type is unknown or empty")
         return null
@@ -545,7 +560,7 @@ func get_new_asset_node(asset_node_type: String, id_prefix: String = "") -> HyAs
     var new_asset_node: = HyAssetNode.new()
     new_asset_node.an_node_id = get_unique_an_id(id_prefix)
     new_asset_node.an_type = asset_node_type
-    new_asset_node.an_name = schema.get_node_type_default_name(asset_node_type)
+    new_asset_node.an_name = SchemaManager.schema.get_node_type_default_name(asset_node_type)
     _register_asset_node(new_asset_node)
     floating_tree_roots.append(new_asset_node)
     an_lookup[new_asset_node.an_node_id] = new_asset_node
@@ -805,13 +820,13 @@ func parse_asset_node_shallow(old_style: bool, asset_node_data: Dictionary, outp
 
     if old_style and not known_node_type:
         var type_key_val: String = asset_node_data.get("Type", "NO_TYPE_KEY")
-        var inferred_node_type: String = schema.resolve_asset_node_type(type_key_val, output_value_type)
+        var inferred_node_type: String = SchemaManager.schema.resolve_asset_node_type(type_key_val, output_value_type)
         if not inferred_node_type or inferred_node_type == "Unknown":
             print_debug("Old-style inferring node type failed, returning null")
             push_error("Old-style inferring node type failed, returning null")
             return null
         else:
-            asset_node_data["$NodeId"] = get_unique_an_id(schema.get_id_prefix_for_node_type(inferred_node_type))
+            asset_node_data["$NodeId"] = get_unique_an_id(SchemaManager.schema.get_id_prefix_for_node_type(inferred_node_type))
     elif not asset_node_data.has("$NodeId"):
         print_debug("Asset node data does not have a $NodeId, it is probably not an asset node")
         return null
@@ -831,11 +846,11 @@ func parse_asset_node_shallow(old_style: bool, asset_node_data: Dictionary, outp
     if known_node_type != "":
         asset_node.an_type = known_node_type
     elif output_value_type != "ROOT":
-        asset_node.an_type = schema.resolve_asset_node_type(asset_node_data.get("Type", "NO_TYPE_KEY"), output_value_type, asset_node.an_node_id)
+        asset_node.an_type = SchemaManager.schema.resolve_asset_node_type(asset_node_data.get("Type", "NO_TYPE_KEY"), output_value_type, asset_node.an_node_id)
     
     var node_schema: Dictionary = {}
     if asset_node.an_type and asset_node.an_type != "Unknown":
-        node_schema = schema.node_schema.get(asset_node.an_type, {})
+        node_schema = SchemaManager.schema.node_schema.get(asset_node.an_type, {})
         if not node_schema:
             print_debug("Warning: Node schema not found for node type: %s" % asset_node.an_type)
     
@@ -902,11 +917,11 @@ func init_asset_node(asset_node: HyAssetNode, with_meta_data: bool = false, meta
 
     var type_schema: = {}
     if asset_node.an_type and asset_node.an_type != "Unknown":
-        type_schema = schema.node_schema[asset_node.an_type]
+        type_schema = SchemaManager.schema.node_schema[asset_node.an_type]
     else:
         print_debug("Warning: Asset node type is unknown or empty")
 
-    asset_node.an_name = schema.get_node_type_default_name(asset_node.an_type)
+    asset_node.an_name = SchemaManager.schema.get_node_type_default_name(asset_node.an_type)
     if meta_data.has(asset_node.an_node_id) and meta_data[asset_node.an_node_id].has("$Title"):
         asset_node.an_name = meta_data[asset_node.an_node_id]["$Title"]
         asset_node.title = asset_node.an_name
@@ -935,7 +950,7 @@ func parse_asset_node_deep(old_style: bool, asset_node_data: Dictionary, output_
         for conn_node_idx in conn_nodes_data.size():
             var conn_value_type: = "Unknown"
             if parsed_node.an_type != "Unknown":
-                conn_value_type = schema.node_schema[parsed_node.an_type]["connections"][conn]["value_type"]
+                conn_value_type = SchemaManager.schema.node_schema[parsed_node.an_type]["connections"][conn]["value_type"]
 
             var sub_parse_result: = parse_asset_node_deep(old_style, conn_nodes_data[conn_node_idx], conn_value_type)
             all_nodes.append_array(sub_parse_result["all_nodes"])
@@ -965,10 +980,10 @@ func parse_root_asset_node(base_node: Dictionary) -> void:
         push_warning("No workspace ID found in root node or editor metadata")
         return
 
-    var root_node_type: String = schema.resolve_root_asset_node_type(hy_workspace_id, base_node)
+    var root_node_type: String = SchemaManager.schema.resolve_root_asset_node_type(hy_workspace_id, base_node)
 
     if old_style_format and not base_node.get("$NodeId", ""):
-        base_node["$NodeId"] = get_unique_an_id(schema.get_id_prefix_for_node_type(root_node_type))
+        base_node["$NodeId"] = get_unique_an_id(SchemaManager.schema.get_id_prefix_for_node_type(root_node_type))
 
     @warning_ignore("unused_variable") var parsed_node_count: = 0
 
@@ -1235,7 +1250,7 @@ func new_graph_node(asset_node: HyAssetNode, newly_created: bool) -> CustomGraph
     
     graph_node.name = new_graph_node_name(graph_node.name if graph_node.name else &"GN")
     
-    var output_type: String = schema.node_schema[asset_node.an_type].get("output_value_type", "")
+    var output_type: String = SchemaManager.schema.node_schema[asset_node.an_type].get("output_value_type", "")
     graph_node.theme_color_output_type = output_type
     var theme_var_color: String = TypeColors.get_color_for_type(output_type)
     if ThemeColorVariants.has_theme_color(theme_var_color):
@@ -1257,7 +1272,7 @@ func new_graph_node(asset_node: HyAssetNode, newly_created: bool) -> CustomGraph
     
     var node_schema: Dictionary = {}
     if asset_node.an_type and asset_node.an_type != "Unknown":
-        node_schema = schema.node_schema[asset_node.an_type]
+        node_schema = SchemaManager.schema.node_schema[asset_node.an_type]
         graph_node.set_node_type_schema(node_schema)
 
     if is_special:
@@ -1310,7 +1325,7 @@ func new_graph_node(asset_node: HyAssetNode, newly_created: bool) -> CustomGraph
                 if setting_name in asset_node.settings:
                     setting_value = asset_node.settings[setting_name]
                 else:
-                    setting_value = schema.node_schema[asset_node.an_type]["settings"][setting_name].get("default_value", 0)
+                    setting_value = SchemaManager.schema.node_schema[asset_node.an_type]["settings"][setting_name].get("default_value", 0)
 
                 if setting_name in node_schema.get("settings", {}):
                     setting_type = node_schema.get("settings", {})[setting_name]["gd_type"]
@@ -1800,7 +1815,7 @@ func serialize_asset_node_graph() -> Dictionary:
     for an in all_asset_nodes:
         an.sort_connections_by_gn_pos(gn_lookup)
 
-    var serialized_data: Dictionary = root_node.serialize_me(schema, gn_lookup)
+    var serialized_data: Dictionary = root_node.serialize_me(SchemaManager.schema, gn_lookup)
     serialized_data["$NodeEditorMetadata"] = serialize_node_editor_metadata()
     
     return serialized_data
@@ -1857,7 +1872,7 @@ func serialize_node_editor_metadata() -> Dictionary:
 
     var floating_trees_serialized: Array[Dictionary] = []
     for floating_tree_root_an in floating_tree_roots:
-        floating_trees_serialized.append(floating_tree_root_an.serialize_me(schema, gn_lookup))
+        floating_trees_serialized.append(floating_tree_root_an.serialize_me(SchemaManager.schema, gn_lookup))
     serialized_metadata["$FloatingNodes"] = floating_trees_serialized
     serialized_metadata["$WorkspaceID"] = hy_workspace_id
     
@@ -1917,7 +1932,7 @@ func on_new_node_type_picked(node_type: String) -> void:
             new_gn.position_offset.x -= new_gn.size.x
 
             next_drop_has_connection["from_node"] = new_gn.name
-            var new_an_schema: Dictionary = schema.node_schema[new_an.an_type]
+            var new_an_schema: Dictionary = SchemaManager.schema.node_schema[new_an.an_type]
             var input_conn_index: int = -1
             var conn_names: Array = new_an_schema.get("connections", {}).keys()
             for conn_idx in conn_names.size():
@@ -1973,11 +1988,11 @@ func can_dissolve_gn(graph_node: GraphNode) -> bool:
     var needs_multi_port: bool = in_port_connection_count[only_in_port_idx] > 1
 
     var asset_node: HyAssetNode = an_lookup.get(graph_node.get_meta("hy_asset_node_id"), null)
-    if not asset_node or not asset_node.an_type or not schema.node_schema.has(asset_node.an_type):
+    if not asset_node or not asset_node.an_type or not SchemaManager.schema.node_schema.has(asset_node.an_type):
         print_debug("Can dissolve GN: Asset node not found or AN type not found")
         return false
     
-    var type_schema: Dictionary = schema.node_schema[asset_node.an_type]
+    var type_schema: Dictionary = SchemaManager.schema.node_schema[asset_node.an_type]
     var output_value_type: String = type_schema.get("output_value_type", "")
 
     var connection_name: String = asset_node.connection_list[only_in_port_idx]
@@ -1988,9 +2003,9 @@ func can_dissolve_gn(graph_node: GraphNode) -> bool:
     
     if needs_multi_port:
         var out_an: HyAssetNode = an_lookup.get(output_gn.get_meta("hy_asset_node_id", ""))
-        if not out_an or not out_an.an_type or not schema.node_schema.has(out_an.an_type):
+        if not out_an or not out_an.an_type or not SchemaManager.schema.node_schema.has(out_an.an_type):
             return false
-        var out_type_schema: Dictionary = schema.node_schema[out_an.an_type]
+        var out_type_schema: Dictionary = SchemaManager.schema.node_schema[out_an.an_type]
         var out_connection_name: String = out_an.connection_list[output_port_idx]
         var out_is_multi: bool = out_type_schema.get("connections", {})[out_connection_name].get("multi", false)
         if not out_is_multi:

@@ -5,12 +5,10 @@ signal colors_changed
 const TypeColorButton = preload("res://ui/type_color_button.gd")
 
 var type_color_styleboxes: Dictionary = {}
-var schema: AssetNodesSchema = null
 
 func _ready() -> void:
     var graph_edit: AssetNodeGraphEdit = get_tree().current_scene.find_child("AssetNodeGraphEdit")
     assert(graph_edit != null, "Type colors flow: Graph Edit not found")
-    schema = graph_edit.schema
     setup()
 
 func setup() -> void:
@@ -23,7 +21,7 @@ func color_name_color_changed(color_name: String) -> void:
 
 func make_type_color_buttons() -> void:
     clear_children()
-    for type_name in schema.value_types:
+    for type_name in SchemaManager.schema.value_types:
         var type_color_button: = TypeColorButton.new()
         type_color_button.set_type_name(type_name)
         add_child(type_color_button, true)

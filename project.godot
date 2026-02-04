@@ -28,6 +28,7 @@ config/icon="res://icon.svg"
 
 ANESettings="*uid://js4qrto53qyd"
 Util="*res://util.gd"
+SchemaManager="*uid://dadtbq1o8e5kp"
 ThemeColorVariants="*res://ui/theme_color_variants.tscn"
 TypeColors="*res://model/type_colors.gd"
 ClipboardManager="*uid://bs1q4dced67u7"

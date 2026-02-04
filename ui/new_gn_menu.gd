@@ -61,7 +61,7 @@ func _ready() -> void:
     if not graph_edit:
         push_warning("Graph edit is not set, please set it in the inspector")
         print("Graph edit is not set, please set it in the inspector")
-    schema = graph_edit.schema
+    schema = SchemaManager.schema
     
     #rebuild_preview_tree()
 
@@ -246,7 +246,7 @@ func rebuild_preview_tree() -> void:
     scroll_container = find_child("ScrollContainer")
     node_list_tree = scroll_container.get_node("Tree")
     if not schema:
-        schema = AssetNodesSchema.new()
+        schema = SchemaManager.schema
     if not an_types_by_input_value_type:
         build_lookups()
     build_node_list()

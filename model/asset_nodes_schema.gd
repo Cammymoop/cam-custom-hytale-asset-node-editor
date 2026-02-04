@@ -34,6 +34,9 @@ func resolve_root_asset_node_type(workspace_id: String, node_data: Dictionary) -
         return workspace_no_output_types[workspace_id]
     
     elif workspace_id in workspace_root_output_types:
+        if not node_data:
+            return workspace_root_output_type_default_node_types[workspace_id]
+
         var expected_output_type: = workspace_root_output_types[workspace_id]
         var node_type_value: String = node_data.get("Type", "")
         var type_key: = "%s|%s" % [expected_output_type, node_type_value]
@@ -388,6 +391,12 @@ func get_id_prefix_for_node_type(node_type: String) -> String:
     "HytaleGenerator - Density": "Density",
     "HytaleGenerator - BlockMask": "BlockMask",
     "HytaleGenerator - Assignments": "Assignments",
+}
+
+@export var workspace_root_output_type_default_node_types: Dictionary[String, String] = {
+    "HytaleGenerator - Density": "ExportedDensity",
+    "HytaleGenerator - BlockMask": "BlockMask",
+    "HytaleGenerator - Assignments": "FieldFunctionAssignments",
 }
 
 @export var node_schema: Dictionary[String, Dictionary] = {

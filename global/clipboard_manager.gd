@@ -78,7 +78,7 @@ func deserialize_clipboard_data_roots(parsed_clipboard: Dictionary, graph_edit: 
     typed_meta.merge(parsed_clipboard["included_metadata"]["node_metadata"])
     graph_edit.asset_node_meta = typed_meta
     for root_data in parsed_clipboard["asset_node_data"]:
-        var tree_root_type: String = graph_edit.schema._unknown_output_type_inference(root_data["$NodeId"])
+        var tree_root_type: String = SchemaManager.schema._unknown_output_type_inference(root_data["$NodeId"])
         var node_parse_result: = graph_edit.parse_asset_node_deep(false, root_data, "", tree_root_type)
         all_deserialized_ans.append_array(node_parse_result["all_nodes"])
     graph_edit.asset_node_meta = prev_asset_node_meta
@@ -106,7 +106,7 @@ func serialize_copied_nodes(graph_edit: AssetNodeGraphEdit) -> String:
     var copied_an_roots: Array[HyAssetNode] = graph_edit.get_an_roots_within_set(copied_an_set)
     print("serializing %s asset nodes" % copied_an_roots.size())
     for copied_an_root in copied_an_roots:
-        var serialized_tree: = copied_an_root.serialize_within_set(graph_edit.schema, graph_edit.gn_lookup, copied_an_set)
+        var serialized_tree: = copied_an_root.serialize_within_set(SchemaManager.schema, graph_edit.gn_lookup, copied_an_set)
         serialized_data["asset_node_data"].append(serialized_tree)
     return JSON.stringify(serialized_data, "  " if pretty_print_json else "", false)
 

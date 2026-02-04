@@ -6,9 +6,11 @@ class_name PopupMenuRoot
 @export var new_gn_menu: Control
 @export var theme_editor_menu: Control
 @export var save_confirm: Control
+@export var new_file_type_chooser: Control
 
 func _ready() -> void:
     save_confirm.closing.connect(hide_all_menus)
+    new_file_type_chooser.closing.connect(hide_all_menus)
     hide_all_menus()
 
 func show_theme_editor() -> void:
@@ -22,6 +24,11 @@ func show_save_confirm(prompt_text: String, after_save_callback: Callable) -> vo
     save_confirm.show()
     save_confirm.set_prompt_text(prompt_text)
     save_confirm.set_after_save_callback(after_save_callback)
+
+func show_new_file_type_chooser() -> void:
+    hide_all_menus()
+    non_focus_stop.show()
+    new_file_type_chooser.show()
 
 func show_new_gn_menu() -> void:
     hide_all_menus()
@@ -37,6 +44,7 @@ func hide_all_menus() -> void:
     new_gn_menu.hide()
     theme_editor_menu.hide()
     save_confirm.hide()
+    new_file_type_chooser.hide()
 
 
 func _unhandled_input(event: InputEvent) -> void:

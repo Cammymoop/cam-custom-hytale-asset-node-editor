@@ -2,7 +2,6 @@
 
 [ext_resource type="Theme" uid="uid://cv3cabit36ilb" path="res://ui/main_theme.tres" id="1_0xm2m"]
 [ext_resource type="Script" uid="uid://b2hqpos1gajgs" path="res://asset_node_graph_edit.gd" id="1_ig7tw"]
-[ext_resource type="Script" uid="uid://dit1s6nyie23m" path="res://model/asset_nodes_schema.gd" id="3_h2yge"]
 [ext_resource type="Script" uid="uid://dyeeven10x5a6" path="res://dialog_handler.gd" id="5_7mycd"]
 [ext_resource type="Script" uid="uid://d2ucs5vp8diew" path="res://custom_graph_nodes/special_gn_factory.gd" id="5_lquwl"]
 [ext_resource type="Script" uid="uid://c7vsellvjd3jj" path="res://ui/new_gn_menu.gd" id="6_7mycd"]
@@ -15,10 +14,7 @@
 [ext_resource type="Script" uid="uid://cn8t60w06bwpc" path="res://ui/type_colors_flow.gd" id="11_dg77c"]
 [ext_resource type="Script" uid="uid://dm0dehdgpmrnk" path="res://ui/type_color_button.gd" id="12_ycdy4"]
 [ext_resource type="Script" uid="uid://b7lb2mxxqf1uj" path="res://ui/save_confirm.gd" id="15_vivmo"]
-
-[sub_resource type="Resource" id="Resource_1bvp3"]
-script = ExtResource("3_h2yge")
-metadata/_custom_type_script = "uid://dit1s6nyie23m"
+[ext_resource type="Script" uid="uid://bbhpphioejxw1" path="res://ui/new_file_type_chooser.gd" id="16_2cqfq"]
 
 [sub_resource type="Theme" id="Theme_272bh"]
 
@@ -130,18 +126,6 @@ axis_stretch_horizontal = 1
 axis_stretch_vertical = 1
 modulate_color = Color(0.07715169, 0.19749302, 0.13582164, 1)
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_ycdy4"]
-bg_color = Color(0.32915878, 0.32915822, 0.3291585, 1)
-corner_radius_top_left = 10
-corner_radius_top_right = 10
-corner_radius_bottom_right = 10
-corner_radius_bottom_left = 10
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_w48qg"]
-bg_color = Color(0.7835238, 0.78352326, 0.7835235, 1)
-corner_radius_bottom_right = 10
-corner_radius_bottom_left = 10
-
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_2cqfq"]
 bg_color = Color(0.32915878, 0.32915822, 0.3291585, 1)
 corner_radius_top_left = 10
@@ -150,6 +134,18 @@ corner_radius_bottom_right = 10
 corner_radius_bottom_left = 10
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_yaehf"]
+bg_color = Color(0.7835238, 0.78352326, 0.7835235, 1)
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_ycdy4"]
+bg_color = Color(0.32915878, 0.32915822, 0.3291585, 1)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_w48qg"]
 bg_color = Color(0.7835238, 0.78352326, 0.7835235, 1)
 corner_radius_bottom_right = 10
 corner_radius_bottom_left = 10
@@ -179,7 +175,6 @@ minimap_enabled = false
 show_zoom_label = true
 script = ExtResource("1_ig7tw")
 test_json_file = "res://test_files/example_biomes/Basic.json"
-schema = SubResource("Resource_1bvp3")
 new_node_menu = NodePath("../PopupMenuRoot/NonFocusStop/NewGNMenu")
 popup_menu_root = NodePath("../PopupMenuRoot")
 json_positions_scale = Vector2(0.6, 0.6)
@@ -259,7 +254,7 @@ clear_button_enabled = true
 [node name="DialogHandler" type="Node" parent="." unique_id=1722932133]
 script = ExtResource("5_7mycd")
 
-[node name="PopupMenuRoot" type="Control" parent="." unique_id=1222369526 node_paths=PackedStringArray("focus_stop", "non_focus_stop", "new_gn_menu", "theme_editor_menu", "save_confirm")]
+[node name="PopupMenuRoot" type="Control" parent="." unique_id=1222369526 node_paths=PackedStringArray("focus_stop", "non_focus_stop", "new_gn_menu", "theme_editor_menu", "save_confirm", "new_file_type_chooser")]
 z_index = 2
 layout_mode = 1
 anchors_preset = 15
@@ -275,9 +270,9 @@ non_focus_stop = NodePath("NonFocusStop")
 new_gn_menu = NodePath("NonFocusStop/NewGNMenu")
 theme_editor_menu = NodePath("FocusStop/CenterContainer/ThemeEditor")
 save_confirm = NodePath("FocusStop/CenterContainer/SaveConfirm")
+new_file_type_chooser = NodePath("NonFocusStop/NewFileTypeChooser")
 
 [node name="NonFocusStop" type="CenterContainer" parent="PopupMenuRoot" unique_id=1041756882]
-visible = false
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -337,6 +332,42 @@ layout_mode = 2
 size_flags_horizontal = 4
 mouse_default_cursor_shape = 2
 text = "Show All"
+
+[node name="NewFileTypeChooser" type="PanelContainer" parent="PopupMenuRoot/NonFocusStop" unique_id=1695221338]
+visible = false
+custom_minimum_size = Vector2(340, 0)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_2cqfq")
+script = ExtResource("16_2cqfq")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="PopupMenuRoot/NonFocusStop/NewFileTypeChooser" unique_id=1386233797]
+layout_mode = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="PopupMenuRoot/NonFocusStop/NewFileTypeChooser/VBoxContainer" unique_id=1621501401]
+layout_mode = 2
+theme_override_constants/margin_bottom = 0
+
+[node name="Label" type="Label" parent="PopupMenuRoot/NonFocusStop/NewFileTypeChooser/VBoxContainer/MarginContainer" unique_id=910192107]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "New File"
+horizontal_alignment = 1
+
+[node name="PanelContainer" type="PanelContainer" parent="PopupMenuRoot/NonFocusStop/NewFileTypeChooser/VBoxContainer" unique_id=904321835]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_yaehf")
+
+[node name="MarginContainer" type="MarginContainer" parent="PopupMenuRoot/NonFocusStop/NewFileTypeChooser/VBoxContainer/PanelContainer" unique_id=1185350737]
+layout_mode = 2
+
+[node name="ButtonContainer" type="VBoxContainer" parent="PopupMenuRoot/NonFocusStop/NewFileTypeChooser/VBoxContainer/PanelContainer/MarginContainer" unique_id=406972742]
+layout_mode = 2
+theme = ExtResource("8_5vw27")
+
+[node name="Button" type="Button" parent="PopupMenuRoot/NonFocusStop/NewFileTypeChooser/VBoxContainer/PanelContainer/MarginContainer/ButtonContainer" unique_id=923966637]
+layout_mode = 2
+size_flags_horizontal = 4
+text = "HytaleGenerator - Biome"
 
 [node name="FocusStop" type="ColorRect" parent="PopupMenuRoot" unique_id=840984799]
 visible = false
@@ -452,6 +483,7 @@ flat = false
 script = ExtResource("12_ycdy4")
 
 [node name="SaveConfirm" type="PanelContainer" parent="PopupMenuRoot/FocusStop/CenterContainer" unique_id=1473184355 node_paths=PackedStringArray("dialog_handler")]
+visible = false
 custom_minimum_size = Vector2(340, 0)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_2cqfq")
