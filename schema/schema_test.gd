@@ -42,6 +42,8 @@ func validate_value_types_complete():
 		if node_def.has("connections"):
 			for conn_name in node_def["connections"]:
 				var conn_def = node_def["connections"][conn_name]
+				if not conn_def.get("value_type", ""):
+					add_error("Node '%s' connection '%s' missing value_type field" % [node_name, conn_name])
 				var value_type = conn_def["value_type"]
 				if not schema.value_types.has(value_type):
 					add_error("Value type '%s' referenced in node '%s' connection '%s' but not in value_types array" % [value_type, node_name, conn_name])
@@ -71,8 +73,8 @@ func validate_output_value_types():
 
 ## Check that workspace_root_types reference valid node types
 func validate_workspace_root_types():
-	for workspace_id in schema.workspace_root_types:
-		var node_type = schema.workspace_root_types[workspace_id]
+	for workspace_id in schema.workspace_no_output_types:
+		var node_type = schema.workspace_no_output_types[workspace_id]
 		if not schema.node_schema.has(node_type):
 			add_error("Workspace type '%s' maps to missing node type '%s'" % [workspace_id, node_type])
 
@@ -104,7 +106,7 @@ func validate_json_file(file_path: String):
 	if workspace_id == "":
 		add_error("No workspace ID found in root node or editor metadata in file '%s'" % file_path)
 
-	var root_type = schema.resolve_asset_node_type(root_data.get("Type", "NO_TYPE_KEY"), "ROOT|%s" % workspace_id, root_data.get("$NodeId", ""))
+	var root_type = schema.resolve_root_asset_node_type(workspace_id, root_data)
 	validate_node(root_data, root_type, "NO_OUTPUT_TYPE", file_path)
 	
 	# Walk all nodes recursively, tracking their parent connection types

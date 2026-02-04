@@ -5,6 +5,8 @@ var full_id_prefix_lookup: Dictionary[String, String] = {}
 
 func load_full_id_prefix_lookup() -> void:
     for node_type in node_schema.keys():
+        if node_schema[node_type].get("skip_reverse_prefix_lookup", false):
+            continue
         full_id_prefix_lookup[get_id_prefix_for_node_type(node_type)] = node_type
 
 func get_node_type_default_name(node_type: String) -> String:
@@ -209,9 +211,23 @@ func get_id_prefix_for_node_type(node_type: String) -> String:
     # Curve nodes
     "Curve|Manual": "ManualCurve",
     "Curve|DistanceExponential": "DistanceExponentialCurve",
+    "Curve|DistanceS": "DistanceSCurve",
     "Curve|Constant": "ConstantCurve",
     "Curve|Sum": "SumCurve",
     "Curve|Multiplier": "MultiplierCurve",
+    "Curve|Imported": "ImportedCurve",
+    "Curve|Ceiling": "CeilingCurve",
+    "Curve|Floor": "FloorCurve",
+    "Curve|Clamp": "ClampCurve",
+    "Curve|Inverter": "InverterCurve",
+    "Curve|Max": "MaxCurve",
+    "Curve|Min": "MinCurve",
+    "Curve|Not": "NotCurve",
+    "Curve|SmoothCeiling": "SmoothCeilingCurve",
+    "Curve|SmoothFloor": "SmoothFloorCurve",
+    "Curve|SmoothClamp": "SmoothClampCurve",
+    "Curve|SmoothMax": "SmoothMaxCurve",
+    "Curve|SmoothMin": "SmoothMinCurve",
     
     # Material Provider nodes
     "MaterialProvider|Constant": "ConstantMaterialProvider",
@@ -226,10 +242,17 @@ func get_id_prefix_for_node_type(node_type: String) -> String:
     
     # Positions nodes
     "Positions|Mesh2D": "Mesh2DPositions",
+    "Positions|Mesh3D": "Mesh3DPositions",
+    "Positions|Anchor": "AnchorPositions",
+    "Positions|Union": "UnionPositions",
+    "Positions|FieldFunction": "FieldFunctionPositions",
     "Positions|Occurrence": "OccurrencePositions",
     "Positions|Imported": "ImportedPositions",
     "Positions|Offset": "OffsetPositions",
     "Positions|List": "ListPositions",
+    "Positions|Sphere": "SpherePositions",
+    "Positions|BaseHeight": "BaseHeightPositions",
+    "Positions|SimpleHorizontal": "SimpleHorizontalPositions",
     
     # Pattern nodes
     "Pattern|Floor": "FloorPattern",
@@ -330,6 +353,10 @@ func get_id_prefix_for_node_type(node_type: String) -> String:
     
     # VectorProvider nodes
     "VectorProvider|Constant": "ConstantVectorProvider",
+    "VectorProvider|DensityGradient": "DensityGradientVectorProvider",
+    "VectorProvider|Imported": "ImportedVectorProvider",
+    "VectorProvider|Exported": "ExportedVectorProvider",
+    "VectorProvider|Cache": "CacheVectorProvider",
     
     # Condition nodes (for SpaceAndDepth)
     "Condition|AlwaysTrueCondition": "AlwaysTrueCondition",
@@ -1113,6 +1140,9 @@ func get_id_prefix_for_node_type(node_type: String) -> String:
     "ManualCurve": {
         "display_name": "Manual Curve",
         "output_value_type": "Curve",
+        "settings": {
+            "ExportAs": { "gd_type": TYPE_STRING, "default_value": "" },
+        },
         "connections": {
             "Points": { "value_type": "CurvePoint", "multi": true },
         }
@@ -1123,6 +1153,17 @@ func get_id_prefix_for_node_type(node_type: String) -> String:
         "settings": {
             "Exponent": { "gd_type": TYPE_FLOAT, "default_value": 1.0 },
             "Range": { "gd_type": TYPE_FLOAT, "default_value": 6.0 },
+        }
+    },
+    "DistanceSCurve": {
+        "display_name": "Distance S Curve",
+        "output_value_type": "Curve",
+        "settings": {
+            "ExponentA": { "gd_type": TYPE_FLOAT, "default_value": 1.0 },
+            "ExponentB": { "gd_type": TYPE_FLOAT, "default_value": 1.0 },
+            "Range": { "gd_type": TYPE_FLOAT, "default_value": 6.0 },
+            "Transition": { "gd_type": TYPE_FLOAT, "default_value": 1.0 },
+            "TransitionSmooth": { "gd_type": TYPE_FLOAT, "default_value": 1.0 },
         }
     },
     "ConstantCurve": {
@@ -1141,10 +1182,145 @@ func get_id_prefix_for_node_type(node_type: String) -> String:
         }
     },
     "MultiplierCurve": {
+        "id_prefix_override": "Multiplier.Curve",
         "display_name": "Multiplier Curve",
         "output_value_type": "Curve",
         "connections": {
             "Curves": { "value_type": "Curve", "multi": true },
+        }
+    },
+    "ImportedCurve": {
+        "display_name": "Imported Curve",
+        "output_value_type": "Curve",
+        "settings": {
+            "Name": { "gd_type": TYPE_STRING, "default_value": "" },
+        }
+    },
+    "CeilingCurve": {
+        "id_prefix_override": "Ceiling.Curve",
+        "display_name": "Ceiling Curve",
+        "output_value_type": "Curve",
+        "settings": {
+            "Ceiling": { "gd_type": TYPE_FLOAT, "default_value": 0.0 },
+        },
+        "connections": {
+            "Curve": { "value_type": "Curve", "multi": false },
+        }
+    },
+    "FloorCurve": {
+        "id_prefix_override": "Floor.Curve",
+        "display_name": "Floor Curve",
+        "output_value_type": "Curve",
+        "settings": {
+            "Floor": { "gd_type": TYPE_FLOAT, "default_value": 0.0 },
+        },
+        "connections": {
+            "Curve": { "value_type": "Curve", "multi": false },
+        }
+    },
+    "ClampCurve": {
+        "id_prefix_override": "Clamp.Curve",
+        "display_name": "Clamp Curve",
+        "output_value_type": "Curve",
+        "settings": {
+            "WallA": { "gd_type": TYPE_FLOAT, "default_value": 1.0 },
+            "WallB": { "gd_type": TYPE_FLOAT, "default_value": -1.0 },
+        },
+        "connections": {
+            "Curve": { "value_type": "Curve", "multi": false },
+        }
+    },
+    "InverterCurve": {
+        "id_prefix_override": "Inverter.Curve",
+        "display_name": "Inverter Curve",
+        "output_value_type": "Curve",
+        "connections": {
+            "Curve": { "value_type": "Curve", "multi": false },
+        }
+    },
+    "MaxCurve": {
+        "id_prefix_override": "Max.Curve",
+        "display_name": "Max Curve",
+        "output_value_type": "Curve",
+        "connections": {
+            "Curves": { "value_type": "Curve", "multi": true },
+        }
+    },
+    "MinCurve": {
+        "id_prefix_override": "Min.Curve",
+        "display_name": "Min Curve",
+        "output_value_type": "Curve",
+        "connections": {
+            "Curves": { "value_type": "Curve", "multi": true },
+        }
+    },
+    "NotCurve": {
+        "id_prefix_override": "Not.Curve",
+        "display_name": "Not Curve",
+        "output_value_type": "Curve",
+        "connections": {
+            "Curve": { "value_type": "Curve", "multi": false },
+        }
+    },
+    "SmoothCeilingCurve": {
+        "id_prefix_override": "SmoothCeiling.Curve",
+        "display_name": "Smooth Ceiling Curve",
+        "output_value_type": "Curve",
+        "settings": {
+            "Ceiling": { "gd_type": TYPE_FLOAT, "default_value": 0.0 },
+            "Range": { "gd_type": TYPE_FLOAT, "default_value": 0.0 },
+        },
+        "connections": {
+            "Curve": { "value_type": "Curve", "multi": false },
+        }
+    },
+    "SmoothFloorCurve": {
+        "id_prefix_override": "SmoothFloor.Curve",
+        "display_name": "Smooth Floor Curve",
+        "output_value_type": "Curve",
+        "settings": {
+            "Floor": { "gd_type": TYPE_FLOAT, "default_value": 0.0 },
+            "Range": { "gd_type": TYPE_FLOAT, "default_value": 0.0 },
+        },
+        "connections": {
+            "Curve": { "value_type": "Curve", "multi": false },
+        }
+    },
+    "SmoothClampCurve": {
+        "id_prefix_override": "SmoothClamp.Curve",
+        "display_name": "Smooth Clamp Curve",
+        "output_value_type": "Curve",
+        "settings": {
+            "WallA": { "gd_type": TYPE_FLOAT, "default_value": 1.0 },
+            "WallB": { "gd_type": TYPE_FLOAT, "default_value": -1.0 },
+            "Range": { "gd_type": TYPE_FLOAT, "default_value": 0.0 },
+        },
+        "connections": {
+            "Curve": { "value_type": "Curve", "multi": false },
+        }
+    },
+    "SmoothMaxCurve": {
+        "id_prefix_override": "SmoothMax.Curve",
+        "display_name": "Smooth Max Curve",
+        "output_value_type": "Curve",
+        "settings": {
+            "Range": { "gd_type": TYPE_FLOAT, "default_value": 0.0 },
+        },
+        "connections": {
+            "CurveA": { "value_type": "Curve", "multi": false },
+            "CurveB": { "value_type": "Curve", "multi": false },
+        }
+    },
+    "SmoothMinCurve": {
+        "id_prefix_override": "SmoothMin.Curve",
+        "display_name": "Smooth Min Curve",
+        "output_value_type": "Curve",
+        "settings": {
+            "Range": { "gd_type": TYPE_FLOAT, "default_value": 0.0 },
+        },
+        "connections": {
+            "CurveA": { "value_type": "Curve", "multi": false },
+            "CurveB": { "value_type": "Curve", "multi": false },
         }
     },
     
@@ -1220,6 +1396,8 @@ func get_id_prefix_for_node_type(node_type: String) -> String:
         }
     },
     "Point3DInt": {
+		"id_prefix_override": "Point3D",
+        "skip_reverse_prefix_lookup": true,
         "display_name": "Point 3D (Integer)",
         "output_value_type": "Point3DInt",
         "settings": {
@@ -1249,9 +1427,61 @@ func get_id_prefix_for_node_type(node_type: String) -> String:
         "settings": {
             "Skip": { "gd_type": TYPE_BOOL, "default_value": false },
             "PointsY": { "gd_type": TYPE_FLOAT, "default_value": 0.0 },
+            "ExportAs": { "gd_type": TYPE_STRING, "default_value": "" },
         },
         "connections": {
             "PointGenerator": { "value_type": "PointGenerator", "multi": false },
+        }
+    },
+    "Mesh3DPositions": {
+        "display_name": "Mesh 3D Positions",
+        "output_value_type": "Positions",
+        "settings": {
+            "Skip": { "gd_type": TYPE_BOOL, "default_value": false },
+            "PointsY": { "gd_type": TYPE_FLOAT, "default_value": 0.0 },
+            "ExportAs": { "gd_type": TYPE_STRING, "default_value": "" },
+        },
+        "connections": {
+            "PointGenerator": { "value_type": "PointGenerator", "multi": false },
+        }
+    },
+    "AnchorPositions": {
+        "id_prefix_override": "Anchor.Positions",
+        "display_name": "Anchor Positions",
+        "output_value_type": "Positions",
+        "settings": {
+            "Skip": { "gd_type": TYPE_BOOL, "default_value": false },
+            "Reversed": { "gd_type": TYPE_BOOL, "default_value": false },
+            "ExportAs": { "gd_type": TYPE_STRING, "default_value": "" },
+        },
+        "connections": {
+            "Positions": { "value_type": "Positions", "multi": false },
+        }
+    },
+    "UnionPositions": {
+        "display_name": "Union Positions",
+        "output_value_type": "Positions",
+        "settings": {
+            "Skip": { "gd_type": TYPE_BOOL, "default_value": false },
+            "OffsetX": { "gd_type": TYPE_STRING, "default_value": "OffsetX", "hidden": true },
+            "OffsetY": { "gd_type": TYPE_STRING, "default_value": "OffsetY", "hidden": true },
+            "OffsetZ": { "gd_type": TYPE_STRING, "default_value": "OffsetZ", "hidden": true },
+            "ExportAs": { "gd_type": TYPE_STRING, "default_value": "" },
+        },
+        "connections": {
+            "Positions": { "value_type": "Positions", "multi": true },
+        }
+    },
+    "FieldFunctionPositions": {
+        "display_name": "Field Function Positions",
+        "output_value_type": "Positions",
+        "settings": {
+            "Skip": { "gd_type": TYPE_BOOL, "default_value": false },
+            "ExportAs": { "gd_type": TYPE_STRING, "default_value": "" },
+        },
+        "connections": {
+            "Positions": { "value_type": "Positions", "multi": false },
+            "FieldFunction": { "value_type": "Density", "multi": false },
         }
     },
     "OccurrencePositions": {
@@ -1298,6 +1528,46 @@ func get_id_prefix_for_node_type(node_type: String) -> String:
         },
         "connections": {
             "Positions": { "value_type": "Point3D", "multi": true },
+        }
+    },
+    "SpherePositions": {
+        "id_prefix_override": "Sphere.Positions",
+        "display_name": "Sphere Positions",
+        "output_value_type": "Positions",
+        "settings": {
+            "Skip": { "gd_type": TYPE_BOOL, "default_value": false },
+            "Range": { "gd_type": TYPE_FLOAT, "default_value": 0.0 },
+            "ExportAs": { "gd_type": TYPE_STRING, "default_value": "" },
+        },
+        "connections": {
+            "Positions": { "value_type": "Positions", "multi": false },
+        }
+    },
+    "BaseHeightPositions": {
+        "id_prefix_override": "BaseHeight.Positions",
+        "display_name": "Base Height Positions",
+        "output_value_type": "Positions",
+        "settings": {
+            "Skip": { "gd_type": TYPE_BOOL, "default_value": false },
+            "BedName": { "gd_type": TYPE_STRING, "default_value": "" },
+            "MaxYRead": { "gd_type": TYPE_INT, "default_value": 1 },
+            "MinYRead": { "gd_type": TYPE_INT, "default_value": -1 },
+            "ExportAs": { "gd_type": TYPE_STRING, "default_value": "" },
+        },
+        "connections": {
+            "Positions": { "value_type": "Positions", "multi": false },
+        }
+    },
+    "SimpleHorizontalPositions": {
+        "display_name": "Simple Horizontal Positions",
+        "output_value_type": "Positions",
+        "settings": {
+            "Skip": { "gd_type": TYPE_BOOL, "default_value": false },
+            "ExportAs": { "gd_type": TYPE_STRING, "default_value": "" },
+        },
+        "connections": {
+            "Positions": { "value_type": "Point3D", "multi": false },
+            "RangeY": { "value_type": "Range", "multi": false },
         }
     },
     
@@ -1454,7 +1724,7 @@ func get_id_prefix_for_node_type(node_type: String) -> String:
         "settings": {
             "Skip": { "gd_type": TYPE_BOOL, "default_value": false },
             "ExportAs": { "gd_type": TYPE_STRING, "default_value": "" },
-            "BoxBlockType": { "gd_type": TYPE_STRING, "default_value": "BoxBlockType" },
+            "BoxBlockType": { "gd_type": TYPE_STRING, "default_value": "BoxBlockType", "hidden": true },
         },
         "connections": {
             "Range": { "value_type": "Point3DInt", "multi": false },
@@ -2008,11 +2278,57 @@ func get_id_prefix_for_node_type(node_type: String) -> String:
 		"id_prefix_override": "Constant.VectorProvider",
         "display_name": "Constant Vector Provider",
         "output_value_type": "VectorProvider",
+        "settings": {
+            "ExportAs": { "gd_type": TYPE_STRING, "default_value": "" },
+        },
         "connections": {
             "Vector": { "value_type": "Point3D", "multi": false },
         }
     },
-    
+    "DensityGradientVectorProvider": {
+        "id_prefix_override": "DensityGradient.VectorProvider",
+        "display_name": "Density Gradient Vector Provider",
+        "output_value_type": "VectorProvider",
+        "settings": {
+            "ExportAs": { "gd_type": TYPE_STRING, "default_value": "" },
+            "SampleDistance": { "gd_type": TYPE_FLOAT, "default_value": 1.0 },
+        },
+        "connections": {
+            "Density": { "value_type": "Density", "multi": false },
+        }
+    },
+    "ExportedVectorProvider": {
+        "id_prefix_override": "Exported.VectorProvider",
+        "display_name": "Exported Vector Provider",
+        "output_value_type": "VectorProvider",
+        "settings": {
+            "ExportAs": { "gd_type": TYPE_STRING, "default_value": "" },
+            "SingleInstance": { "gd_type": TYPE_BOOL, "default_value": true },
+        },
+        "connections": {
+            "VectorProvider": { "value_type": "VectorProvider", "multi": false },
+        }
+    },
+    "CacheVectorProvider": {
+        "id_prefix_override": "Cache.VectorProvider",
+        "display_name": "Cache Vector Provider",
+        "output_value_type": "VectorProvider",
+        "settings": {
+            "ExportAs": { "gd_type": TYPE_STRING, "default_value": "" },
+        },
+        "connections": {
+            "VectorProvider": { "value_type": "VectorProvider", "multi": false },
+        }
+    },
+    "ImportedVectorProvider": {
+        "id_prefix_override": "Imported.VectorProvider",
+        "display_name": "Imported Vector Provider",
+        "output_value_type": "VectorProvider",
+        "settings": {
+            "Name": { "gd_type": TYPE_STRING, "default_value": "" },
+        }
+    },
+
     # Conditions (for SpaceAndDepth)
     "AlwaysTrueCondition": {
 		"id_prefix_override": "AlwaysTrueConditionSADMP",
@@ -2197,7 +2513,7 @@ func get_id_prefix_for_node_type(node_type: String) -> String:
     },
     "Range": {
 		"id_prefix_override": "Decimal.Range",
-        "display_name": "Range",
+        "display_name": "Decimal Range",
         "output_value_type": "Range",
         "settings": {
             "MinInclusive": { "gd_type": TYPE_FLOAT, "default_value": 0.0 },

@@ -5,21 +5,21 @@ var base_theme_base_color: Color
 
 @export var theme_colors: Dictionary[String, Color] = {
     "grey": Color(0.44, 0.44, 0.44),
-    "green": Color(0.147, 0.474, 0.242),
+    "light-green": Color(0.147, 0.474, 0.242),
 }
 
 var custom_theme_colors: Dictionary[String, Color] = {}
 
 var color_variants: Dictionary = {
     "grey": preload("res://ui/grey_theme.tres"),
-    "green": base_theme,
+    "light-green": base_theme,
 }
 
 var themes_created: = false
 
 func _ready() -> void:
     base_theme_base_color = base_theme.get_stylebox("normal", "LineEdit").bg_color
-    theme_colors.green = base_theme_base_color
+    theme_colors["light-green"] = base_theme_base_color
     _make_all_theme_color_variants()
 
 func recreate_variants() -> void:
