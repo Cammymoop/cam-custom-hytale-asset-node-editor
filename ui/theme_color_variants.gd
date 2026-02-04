@@ -8,6 +8,8 @@ var base_theme_base_color: Color
     "green": Color(0.147, 0.474, 0.242),
 }
 
+var custom_theme_colors: Dictionary[String, Color] = {}
+
 var color_variants: Dictionary = {
     "grey": preload("res://ui/grey_theme.tres"),
     "green": base_theme,
@@ -20,10 +22,38 @@ func _ready() -> void:
     theme_colors.green = base_theme_base_color
     _make_all_theme_color_variants()
 
+func recreate_variants() -> void:
+    themes_created = false
+    _make_all_theme_color_variants()
+
 func get_theme_color_variant(color_name: String) -> Theme:
-    if color_name not in color_variants:
+    if not has_theme_color(color_name):
         print_debug("Color variant %s not found" % color_name)
+        return color_variants[color_variants.keys()[0]]
     return color_variants[color_name]
+
+func get_theme_colors() -> Dictionary[String, Color]:
+    var combined_col: Dictionary[String, Color] = theme_colors.duplicate()
+    return combined_col.merged(custom_theme_colors, true)
+
+func get_theme_color(color_name: String) -> Color:
+    if color_name in custom_theme_colors:
+        return custom_theme_colors[color_name]
+    return get_default_color(color_name)
+
+func get_default_color(color_name: String) -> Color:
+    if color_name in theme_colors:
+        return theme_colors[color_name]
+    return Color.WHITE
+
+func has_theme_color(color_name: String) -> bool:
+    return color_name in custom_theme_colors or color_name in theme_colors
+
+func add_custom_theme_color(color_name: String, color_color: Color) -> void:
+    custom_theme_colors[color_name] = color_color
+
+func remove_custom_theme_color(color_name: String) -> void:
+    custom_theme_colors.erase(color_name)
 
 func _make_all_theme_color_variants() -> void:
     if themes_created:
@@ -78,3 +108,29 @@ func _make_theme_color_variant(color_name: String, color_color: Color) -> void:
     
     make_colored_duplicate_sb_flat.call("normal", "LineEdit", true)
     make_colored_duplicate_sb_flat.call("read_only", "LineEdit", true)
+
+func get_button_styleboxes(with_color: Color) -> Dictionary:
+    var styleboxes: Dictionary = {}
+    var base_theme_base_color_l: float = base_theme_base_color.ok_hsl_l
+    var base_theme_base_color_s: float = base_theme_base_color.ok_hsl_s
+    var new_h: float = with_color.ok_hsl_h
+    var new_s: float = with_color.ok_hsl_s
+    var new_l: float = with_color.ok_hsl_l
+    
+    var make_colored_duplicate_sb_flat: = func(sb_name: String, sb_class: String, do_bg_col: bool = true, do_border_col: bool = false) -> StyleBoxFlat:
+        var colored_sb: StyleBoxFlat = base_theme.get_stylebox(sb_name, sb_class).duplicate()
+        if do_bg_col:
+            var shade_ratio: float = colored_sb.bg_color.ok_hsl_l / base_theme_base_color_l
+            var sat_ratio: float = colored_sb.bg_color.ok_hsl_s / base_theme_base_color_s
+            colored_sb.bg_color = Color.from_ok_hsl(new_h, sat_ratio * new_s, shade_ratio * new_l)
+        if do_border_col:
+            var shade_ratio: float = colored_sb.border_color.ok_hsl_l / base_theme_base_color_l
+            var sat_ratio: float = colored_sb.border_color.ok_hsl_s / base_theme_base_color_s
+            colored_sb.border_color = Color.from_ok_hsl(new_h, sat_ratio * new_s, shade_ratio * new_l)
+        return colored_sb
+    
+    styleboxes["normal"] = make_colored_duplicate_sb_flat.call("normal", "Button", true, true)
+    styleboxes["hover"] = make_colored_duplicate_sb_flat.call("hover", "Button", true, true)
+    styleboxes["pressed"] = make_colored_duplicate_sb_flat.call("pressed", "Button", true, true)
+    
+    return styleboxes

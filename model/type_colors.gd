@@ -50,6 +50,8 @@ var fallback_color: String = "grey"
     "Range": "yellow",
 }
 
+var custom_color_names: Dictionary[String, String] = {}
+
 var base_label_stylebox: StyleBoxFlat = preload("res://ui/base_label_stylebox.tres")
 var color_label_styleboxes: Dictionary[String, StyleBoxFlat] = {}
 
@@ -59,27 +61,37 @@ func get_color_label_stylebox(color_name: String) -> StyleBoxFlat:
     return color_label_styleboxes[color_name]
 
 func get_color_label_text_color(color_name: String) -> Color:
-    var actual_color: Color = ThemeColorVariants.theme_colors[color_name]
+    var actual_color: Color = get_actual_color(color_name)
     if actual_color.ok_hsl_l < 0.54:
         return Color.WHITE
     return Color.BLACK
 
 func generate_color_label_stylebox(color_name: String) -> void:
     var color_label_stylebox: StyleBoxFlat = base_label_stylebox.duplicate()
-    var actual_color: Color = ThemeColorVariants.theme_colors[color_name]
+    var actual_color: Color = get_actual_color(color_name)
     color_label_stylebox.bg_color = actual_color
     color_label_styleboxes[color_name] = color_label_stylebox
 
+func get_actual_color(color_name: String) -> Color:
+    return ThemeColorVariants.get_theme_color(color_name)
+
 func get_color_for_type(type_name: String) -> String:
+    if type_name in custom_color_names:
+        return custom_color_names[type_name]
     if type_name not in type_colors:
+        return fallback_color
+    return type_colors[type_name]
+
+func get_default_color_name_for_type(type_name: String) -> String:
+    if not type_colors.has(type_name):
         return fallback_color
     return type_colors[type_name]
 
 func get_actual_color_for_type(type_name: String) -> Color:
     var color_name: String = get_color_for_type(type_name)
-    if color_name not in ThemeColorVariants.theme_colors:
+    if not ThemeColorVariants.has_theme_color(color_name):
         color_name = fallback_color
-    return ThemeColorVariants.theme_colors[color_name]
+    return ThemeColorVariants.get_theme_color(color_name)
 
 func get_label_color_for_type(type_name: String) -> Color:
     return get_color_label_text_color(get_color_for_type(type_name))

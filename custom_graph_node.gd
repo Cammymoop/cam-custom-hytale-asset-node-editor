@@ -7,6 +7,8 @@ var node_type_schema: Dictionary
 
 var settings_syncer: SettingsSyncer = null
 
+var theme_color_output_type: String = ""
+
 func make_settings_syncer(asset_node: HyAssetNode) -> SettingsSyncer:
     settings_syncer = SettingsSyncer.new()
     settings_syncer.name = "SettingsSyncer"
@@ -39,11 +41,7 @@ func set_node_type_schema(schema: Dictionary) -> void:
 
 func update_port_colors() -> void:
     if is_slot_enabled_left(0):
-        var my_output_type_color_name: Variant = ThemeColorVariants.color_variants.find_key(theme)
-        if my_output_type_color_name == null:
-            my_output_type_color_name = TypeColors.fallback_color
-
-        var output_color: Color = ThemeColorVariants.theme_colors[my_output_type_color_name]
+        var output_color: Color = TypeColors.get_actual_color_for_type(theme_color_output_type)
         set_slot_color_left(0, output_color)
     
     var slot_control_nodes: Array[Control] = get_slot_control_nodes()

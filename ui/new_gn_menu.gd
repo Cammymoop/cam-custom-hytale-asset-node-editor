@@ -43,7 +43,10 @@ var test_filters: Array = [
 ]
 var test_filter_idx: int = -1
 
+var popup_menu_root: PopupMenuRoot = null
+
 func _ready() -> void:
+    find_popup_menu_root(get_parent())
     hide()
     show_all_btn.toggled.connect(on_show_all_btn_toggled)
     set_max_popup_height()
@@ -64,6 +67,15 @@ func _ready() -> void:
 
     build_lookups()
     build_node_list()
+
+func find_popup_menu_root(from_node: Node) -> void:
+    var the_parent: Node = from_node.get_parent()
+    if not the_parent:
+        return
+    if the_parent is PopupMenuRoot:
+        popup_menu_root = the_parent
+    else:
+        find_popup_menu_root(the_parent)
 
 func _process(_delta: float) -> void:
     if Engine.is_editor_hint():
@@ -207,7 +219,7 @@ func open_menu(for_left_connection: bool, connection_value_type: String) -> void
         node_type_picked.emit(filter_set_single_type)
         return
 
-    show()
+    popup_menu_root.show_new_gn_menu()
 
 func open_all_menu() -> void:
     cur_filter_is_neither = true
@@ -217,7 +229,7 @@ func open_all_menu() -> void:
     show_all_btn.set_pressed_no_signal(true)
     show_all_btn.disabled = true
     show_all_items()
-    show()
+    popup_menu_root.show_new_gn_menu()
 
 func on_show_all_btn_toggled(is_show_all: bool) -> void:
     if is_show_all:

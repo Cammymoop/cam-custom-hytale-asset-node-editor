@@ -1,6 +1,8 @@
 extends GraphEdit
 class_name AssetNodeGraphEdit
 
+signal finished_saving
+
 @export var save_formatted_json: = true
 @export_file_path("*.json") var test_json_file: String = ""
 
@@ -21,15 +23,22 @@ var all_asset_node_ids: Array[String] = []
 var floating_tree_roots: Array[HyAssetNode] = []
 var root_node: HyAssetNode = null
 
+@export var popup_menu_root: PopupMenuRoot
 @onready var special_gn_factory: SpecialGNFactory = $SpecialGNFactory
 @onready var dialog_handler: DialogHandler = get_parent().get_node("DialogHandler")
 
 var asset_node_meta: Dictionary[String, Dictionary] = {}
 var all_meta: Dictionary = {}
 
-enum NodeContextMenu {
-    DELETE_NODE = 1,
-    DISSOLVE_NODE = 2,
+enum ContextMenuItems {
+    COPY_NODES = 1,
+    CUT_NODES,
+    PASTE_NODES,
+
+    DELETE_NODES,
+    DISSOLVE_NODES,
+    BREAK_CONNECTIONS,
+
 }
 
 
@@ -93,6 +102,11 @@ var moved_nodes_positions: Dictionary[GraphNode, Vector2] = {}
 var file_menu_btn: MenuButton = null
 var file_menu_menu: PopupMenu = null
 
+var settings_menu_btn: MenuButton = null
+var settings_menu_menu: PopupMenu = null
+
+var unedited: = true
+
 func get_plain_version() -> String:
     return "v%s" % ProjectSettings.get_setting("application/config/version")
 
@@ -103,6 +117,8 @@ func get_version_number_string() -> String:
     return get_plain_version() + prerelease_string
 
 func _ready() -> void:
+    get_window().files_dropped.connect(on_files_dropped)
+    assert(popup_menu_root != null, "Popup menu root is not set, please set it in the inspector")
     if not new_node_menu:
         push_warning("New node menu is not set, please set it in the inspector")
         print_debug("New node menu is not set, please set it in the inspector")
@@ -110,7 +126,7 @@ func _ready() -> void:
         new_node_menu.node_type_picked.connect(on_new_node_type_picked)
         new_node_menu.cancelled.connect(on_new_node_menu_cancelled)
     
-    setup_file_menu()
+    setup_menus()
 
     #add_valid_left_disconnect_type(1)
     begin_node_move.connect(on_begin_node_move)
@@ -165,7 +181,32 @@ func _ready() -> void:
         #print("No test JSON file specified")
     setup_new_graph()
 
+func on_files_dropped(dragged_files: PackedStringArray) -> void:
+    var json_files: Array[String] = []
+    for dragged_file in dragged_files:
+        if dragged_file.get_extension() == "json":
+            json_files.append(dragged_file)
+    if json_files.size() == 0:
+        return
+    var json_file_path: String = json_files[0]
+    open_file_with_prompt(json_file_path)
+
+func open_file_with_prompt(json_file_path: String) -> void:
+    if unedited or all_asset_nodes.size() < 2:
+        load_file_real(json_file_path)
+    else:
+        var prompt_text: = "Do you want to save the current file before loading '%s'?" % json_file_path
+        popup_menu_root.show_save_confirm(prompt_text, load_file_real.bind(json_file_path))
+
+func load_file_real(json_file_path: String) -> void:
+    print("load file real: %s" % json_file_path)
+    dialog_handler.last_file_dialog_directory = json_file_path.get_base_dir()
+    load_json_file(json_file_path)
+
 func _process(_delta: float) -> void:
+    if popup_menu_root.is_menu_visible():
+        return
+
     if Input.is_action_just_pressed(&"graph_select_all_nodes"):
         select_all()
     elif Input.is_action_just_pressed(&"graph_deselect_all_nodes"):
@@ -183,6 +224,8 @@ func _process(_delta: float) -> void:
             if copied_nodes and clipboard_was_from_cut:
                 clipboard_was_from_cut = false
             undo_manager.undo()
+            #if not undo_manager.has_undo():
+            #    unedited = true
 
     if Input.is_action_just_pressed("show_new_node_menu"):
         if not new_node_menu.visible:
@@ -191,14 +234,21 @@ func _process(_delta: float) -> void:
     
     if cur_zoom_level != zoom:
         on_zoom_changed()
+
+func setup_menus() -> void:
+    # reverse order so they can just move themselves to the start
+    setup_settings_menu()
+    setup_file_menu()
+
+    var menu_hbox: = get_menu_hbox()
+    var sep: = VSeparator.new()
+    menu_hbox.add_child(sep)
+    menu_hbox.move_child(sep, settings_menu_btn.get_index() + 1)
     
 func setup_file_menu() -> void:
     file_menu_btn = preload("res://ui/file_menu.tscn").instantiate()
     file_menu_menu = file_menu_btn.get_popup()
     var menu_hbox: = get_menu_hbox()
-    var sep: = VSeparator.new()
-    menu_hbox.add_child(sep)
-    menu_hbox.move_child(sep, 0)
     menu_hbox.add_child(file_menu_btn)
     menu_hbox.move_child(file_menu_btn, 0)
     
@@ -213,6 +263,20 @@ func on_file_menu_id_pressed(id: int) -> void:
             dialog_handler.show_save_file_dialog()
         "New":
             setup_new_graph()
+
+func setup_settings_menu() -> void:
+    settings_menu_btn = preload("res://ui/settings_menu.tscn").instantiate()
+    settings_menu_menu = settings_menu_btn.get_popup()
+    var menu_hbox: = get_menu_hbox()
+    menu_hbox.add_child(settings_menu_btn)
+    menu_hbox.move_child(settings_menu_btn, 0)
+    settings_menu_menu.index_pressed.connect(on_settings_menu_index_pressed)
+
+func on_settings_menu_index_pressed(index: int) -> void:
+    var menu_item_text: = settings_menu_menu.get_item_text(index)
+    match menu_item_text:
+        "Customize Theme Colors":
+            popup_menu_root.show_theme_editor()
 
 func setup_new_graph() -> void:
     clear_graph()
@@ -421,12 +485,15 @@ func _delete_request(delete_gn_names: Array[StringName]) -> void:
         var gn: GraphNode = get_node_or_null(NodePath(gn_name))
         if gn:
             gns_to_remove.append(gn)
+    _delete_request_refs(gns_to_remove)
+    
+func _delete_request_refs(delete_gns: Array[GraphNode]) -> void:
     var root_gn: GraphNode = get_root_gn()
-    if root_gn in gns_to_remove:
-        gns_to_remove.erase(root_gn)
-    if gns_to_remove.size() == 0:
+    if root_gn in delete_gns:
+        delete_gns.erase(root_gn)
+    if delete_gns.size() == 0:
         return
-    remove_gns_with_connections_and_undo(gns_to_remove)
+    remove_gns_with_connections_and_undo(delete_gns)
 
 func _connect_right_request(from_gn_name: StringName, from_port: int, dropped_pos: Vector2) -> void:
     dropping_new_node_at = dropped_pos
@@ -1121,7 +1188,7 @@ func init_duplicate_graph_node(duplicate_gn: CustomGraphNode, original_gn: Custo
     if original_gn.node_type_schema:
         duplicate_gn.set_node_type_schema(original_gn.node_type_schema)
     duplicate_gn.ignore_invalid_connection_type = original_gn.ignore_invalid_connection_type
-    duplicate_gn.was_right_clicked.connect(_on_graph_node_right_clicked.bind(duplicate_gn))
+    duplicate_gn.was_right_clicked.connect(_on_graph_node_right_clicked)
     duplicate_gn.resizable = original_gn.resizable
     duplicate_gn.title = original_gn.title
     duplicate_gn.name = get_duplicate_gn_name(original_gn.name)
@@ -1141,6 +1208,21 @@ func get_child_node_of_class(parent: Node, class_names: Array[String]) -> Node:
             return found_node
     return null
 
+func update_all_gns_themes() -> void:
+    for child in get_children():
+        if child is CustomGraphNode:
+            update_gn_theme(child)
+            child.update_port_colors()
+
+func update_gn_theme(graph_node: CustomGraphNode) -> void:
+    var output_type: String = graph_node.theme_color_output_type
+    if not output_type:
+        return
+    
+    var theme_var_color: String = TypeColors.get_color_for_type(output_type)
+    if ThemeColorVariants.has_theme_color(theme_var_color):
+        graph_node.theme = ThemeColorVariants.get_theme_color_variant(theme_var_color)
+
 func new_graph_node(asset_node: HyAssetNode, newly_created: bool) -> CustomGraphNode:
     var graph_node: CustomGraphNode = null
     var is_special: = should_be_special_gn(asset_node)
@@ -1154,8 +1236,9 @@ func new_graph_node(asset_node: HyAssetNode, newly_created: bool) -> CustomGraph
     graph_node.name = new_graph_node_name(graph_node.name if graph_node.name else &"GN")
     
     var output_type: String = schema.node_schema[asset_node.an_type].get("output_value_type", "")
+    graph_node.theme_color_output_type = output_type
     var theme_var_color: String = TypeColors.get_color_for_type(output_type)
-    if ThemeColorVariants.theme_colors.has(theme_var_color):
+    if ThemeColorVariants.has_theme_color(theme_var_color):
         graph_node.theme = ThemeColorVariants.get_theme_color_variant(theme_var_color)
     else:
         push_warning("No theme color variant found for color '%s'" % theme_var_color)
@@ -1170,7 +1253,7 @@ func new_graph_node(asset_node: HyAssetNode, newly_created: bool) -> CustomGraph
 
     graph_node.title = asset_node.an_name
     
-    graph_node.was_right_clicked.connect(_on_graph_node_right_clicked.bind(graph_node))
+    graph_node.was_right_clicked.connect(_on_graph_node_right_clicked)
     
     var node_schema: Dictionary = {}
     if asset_node.an_type and asset_node.an_type != "Unknown":
@@ -1436,7 +1519,7 @@ func load_json(json_data: String) -> void:
         test_reserialize_to_file(parsed_json_data)
 
 func _requested_open_file(path: String) -> void:
-    load_json_file(path)
+    open_file_with_prompt(path)
 
 func on_begin_node_move() -> void:
     moved_nodes_positions.clear()
@@ -1452,6 +1535,7 @@ func _set_gns_offsets(new_positions: Dictionary[GraphNode, Vector2]) -> void:
         gn.position_offset = new_positions[gn]
 
 func create_move_nodes_undo_step(moved_nodes: Array[GraphNode]) -> void:
+    unedited = false
     if moved_nodes.size() == 0:
         return
     var new_positions: Dictionary[GraphNode, Vector2] = {}
@@ -1467,6 +1551,7 @@ func create_move_nodes_undo_step(moved_nodes: Array[GraphNode]) -> void:
 ## before calling, set cur_added_connections, cur_removed_connections, cur_connection_added_gns, and cur_connection_removed_gns
 ## does not currently support adding and removing graph nodes during the same step
 func create_undo_connection_change_step() -> void:
+    unedited = false
     var added_gns: Array[GraphNode] = cur_connection_added_gns.duplicate_deep()
     var removed_gns: Array[GraphNode] = cur_connection_removed_gns.duplicate_deep()
     var added_conns: Array[Dictionary] = cur_added_connections.duplicate_deep()
@@ -1571,6 +1656,7 @@ func remove_graph_node_without_undo(gn: GraphNode) -> void:
     remove_child(gn)
 
 func remove_unconnected_gns_with_undo(gns_to_remove: Array[GraphNode]) -> void:
+    unedited = false
     undo_manager.create_action("Remove Graph Nodes")
     var removed_asset_nodes: Dictionary[GraphNode, HyAssetNode] = {}
     for the_gn in gns_to_remove:
@@ -1589,6 +1675,7 @@ func create_add_new_gn_undo_step(the_new_gn: GraphNode) -> void:
     create_add_new_gns_undo_step([the_new_gn])
 
 func create_add_new_gns_undo_step(new_gns: Array[GraphNode]) -> void:
+    unedited = false
     undo_manager.create_action("Add New Graph Node")
     var added_asset_nodes: Dictionary[GraphNode, HyAssetNode] = {}
     for the_gn in new_gns:
@@ -1644,6 +1731,9 @@ func _undo_redo_remove_gn(the_graph_node: GraphNode) -> void:
 
 
 func on_requested_save_file(file_path: String) -> void:
+    print("on requested save file: %s" % file_path)
+    await get_tree().process_frame
+    print("now saving to file")
     save_to_json_file(file_path)
 
 func save_to_json_file(file_path: String) -> void:
@@ -1655,6 +1745,7 @@ func save_to_json_file(file_path: String) -> void:
     file.store_string(json_str)
     file.close()
     prints("Saved asset node graph to JSON file: %s" % file_path)
+    finished_saving.emit()
 
 func find_parent_asset_node(an: HyAssetNode) -> HyAssetNode:
     if an == root_node:
@@ -1896,14 +1987,10 @@ func can_dissolve_gn(graph_node: GraphNode) -> bool:
     return true
 
 func _on_graph_node_right_clicked(graph_node: CustomGraphNode) -> void:
-    print_debug("Graph node right clicked: %s" % graph_node.name)
     if connection_cut_active:
         return
     if not graph_node.selectable:
         return
-    if not graph_node.selected:
-        deselect_all()
-    set_selected(graph_node)
     context_menu_movement_acc = 24
     context_menu_gn = graph_node
     context_menu_ready = true
@@ -1915,26 +2002,46 @@ func cancel_context_menu() -> void:
 func actually_right_click_gn(graph_node: CustomGraphNode) -> void:
     context_menu_gn = null
     context_menu_ready = false
+    var multiple_selected: bool = false
     if not graph_node.selected:
+        deselect_all()
         set_selected(graph_node)
+    elif get_selected_gns().size() > 1:
+        multiple_selected = true
+    
+    var is_asset_node: bool = graph_node.get_meta("hy_asset_node_id", "") != ""
+
     var context_menu: PopupMenu = PopupMenu.new()
+
     context_menu.name = "NodeContextMenu"
-    context_menu.add_item("Delete Node", NodeContextMenu.DELETE_NODE)
-    context_menu.add_item("Dissolve Node", NodeContextMenu.DISSOLVE_NODE)
-    context_menu.id_pressed.connect(on_node_context_menu_id_pressed.bind(graph_node))
+    
+    var plural_s: = "s" if multiple_selected else ""
+    
+    context_menu.add_item("Copy Node" + plural_s, ContextMenuItems.COPY_NODES)
+    context_menu.add_item("Cut Node" + plural_s, ContextMenuItems.COPY_NODES)
+
+    context_menu.add_item("Delete Node" + plural_s, ContextMenuItems.DELETE_NODES)
+    if not can_delete_gn(graph_node):
+        var delete_idx: int = context_menu.get_item_index(ContextMenuItems.DELETE_NODES)
+        context_menu.set_item_disabled(delete_idx, true)
+    
+    if is_asset_node:
+        context_menu.add_item("Dissolve Node", ContextMenuItems.DISSOLVE_NODES)
+        if not can_dissolve_gn(graph_node):
+            var dissolve_idx: int = context_menu.get_item_index(ContextMenuItems.DISSOLVE_NODES)
+            context_menu.set_item_disabled(dissolve_idx, true)
+        context_menu.id_pressed.connect(on_node_context_menu_id_pressed.bind(graph_node))
+
     add_child(context_menu, true)
 
-    var window: = get_window()
-    context_menu.position = get_global_mouse_position()
-    if not window.gui_embed_subwindows:
-        context_menu.position += window.position
+    context_menu.position = Util.get_context_menu_pos(get_global_mouse_position())
     context_menu.popup()
 
-func on_node_context_menu_id_pressed(node_context_menu_id: NodeContextMenu, on_gn: GraphNode) -> void:
+func on_node_context_menu_id_pressed(node_context_menu_id: ContextMenuItems, on_gn: GraphNode) -> void:
     match node_context_menu_id:
-        NodeContextMenu.DELETE_NODE:
-            _delete_request([on_gn.name])
-        NodeContextMenu.DISSOLVE_NODE:
+        ContextMenuItems.DELETE_NODES:
+            _delete_request_refs(get_selected_gns())
+        ContextMenuItems.DISSOLVE_NODES:
             if can_dissolve_gn(on_gn):
                 pass#dissolve_node(on_gn)
 
@@ -1949,3 +2056,8 @@ func new_graph_node_name(base_name: String) -> String:
 func raw_connections(graph_node: CustomGraphNode) -> Array[Dictionary]:
     assert(is_same(graph_node.get_parent(), self), "raw_connections: Graph node is not a direct child of the graph edit")
     return get_connection_list_from_node(graph_node.name)
+
+func can_delete_gn(graph_node: CustomGraphNode) -> bool:
+    if graph_node == get_root_gn():
+        return false
+    return true

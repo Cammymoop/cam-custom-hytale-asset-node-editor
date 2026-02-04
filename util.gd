@@ -33,3 +33,9 @@ func _average_vector2_small(vectors: Array[Vector2]) -> Vector2:
     for vector in vectors:
         total += vector
     return total / vectors.size()
+
+func get_context_menu_pos(mouse_pos: Vector2i) -> Vector2i:
+    var window: = get_window()
+    if not window.gui_embed_subwindows:
+        return mouse_pos + window.position
+    return mouse_pos
