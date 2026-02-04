@@ -4,6 +4,9 @@
 ### Improvements:
 - Add Display scaling detection, on windows and linux (x11) this is always 100%, and manually setting display scale
   - Custom display scale is saved and persists across sessions
+- Less blurry font and port icon rendering at higher zoom levels
+- Cmd+Backspace or Ctr+Backspace now works as a delete shortcut
+- Can now load files with missing metadata and automatically do a basic arrangement of nodes so they aren't all overlapping
 
 ## 0.1.5
 ### Fixes:

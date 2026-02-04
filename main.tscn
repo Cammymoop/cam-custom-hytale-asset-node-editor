@@ -184,6 +184,7 @@ script = ExtResource("5_lquwl")
 metadata/_custom_type_script = "uid://d2ucs5vp8diew"
 
 [node name="TestGN" type="GraphNode" parent="AssetNodeGraphEdit" unique_id=749274935]
+visible = false
 layout_mode = 0
 offset_left = 85.0
 offset_top = 138.0

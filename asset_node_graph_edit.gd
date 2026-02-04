@@ -9,6 +9,7 @@ signal finished_saving
 @export var new_node_menu: NewGNMenu
 
 var parsed_json_data: Dictionary = {}
+var parsed_has_no_positions: = false
 var loaded: = false
 
 var global_gn_counter: int = 0
@@ -964,14 +965,51 @@ func parse_asset_node_deep(old_style: bool, asset_node_data: Dictionary, output_
 func parse_root_asset_node(base_node: Dictionary) -> void:
     hy_workspace_id = ""
     var old_style_format: = false
+    parsed_has_no_positions = false
+
     if base_node.has("$WorkspaceID"):
         old_style_format = true
         hy_workspace_id = base_node["$WorkspaceID"]
-        
     elif not base_node.get("$NodeEditorMetadata", {}):
         print_debug("Not old-style but Root node does not have $NodeEditorMetadata")
         push_error("Not old-style but Root node does not have $NodeEditorMetadata")
-        return
+        var node_id: String = base_node.get("$NodeId", "")
+        if not node_id:
+            print_debug("No metadata and rot node has no NodeId, aborting")
+            push_error("No metadata and root node has no NodeId, aborting")
+            return
+
+        if node_id.begins_with("Biome-"):
+            print("no workspace but found Biome node, setting workspace to Biome")
+            hy_workspace_id = "HytaleGenerator - Biome"
+        else:
+            var possible_output_types: Array[String] = SchemaManager.schema.workspace_root_output_types.values()
+            var node_type_by_output_type: Dictionary[String, Array] = {}
+            for node_type in SchemaManager.schema.node_schema:
+                var schm: Dictionary = SchemaManager.schema.node_schema[node_type]
+                var output_value_type: String = schm["output_value_type"]
+                if output_value_type in possible_output_types:
+                    if not node_type_by_output_type.has(output_value_type):
+                        node_type_by_output_type[output_value_type] = []
+                    node_type_by_output_type[output_value_type].append(node_type)
+            
+            
+            for output_value_type in node_type_by_output_type.keys():
+                for node_type in node_type_by_output_type[output_value_type]:
+                    var id_prefix: = SchemaManager.schema.get_id_prefix_for_node_type(node_type)
+                    if not id_prefix:
+                        continue
+                    if node_id.begins_with(id_prefix + "-"):
+                        print("discovered workspace by finding root node type: %s" % node_type)
+                        hy_workspace_id = SchemaManager.schema.workspace_root_output_types.find_key(output_value_type)
+                        break
+                if hy_workspace_id:
+                    break
+            if not hy_workspace_id:
+                print_debug("Was not able to discover workspace ID from root node id")
+                push_warning("Was not able to discover workspace ID from root node id")
+                return
+        parsed_has_no_positions = true
     else:
         hy_workspace_id = base_node["$NodeEditorMetadata"].get("$WorkspaceID", "")
     
@@ -1002,13 +1040,6 @@ func parse_root_asset_node(base_node: Dictionary) -> void:
             all_asset_nodes.append_array(floating_parse_result["all_nodes"])
             for an in floating_parse_result["all_nodes"]:
                 all_asset_node_ids.append(an.an_node_id)
-        
-        hy_workspace_id = meta_data.get("$WorkspaceID", "NONE")
-
-    if hy_workspace_id == "NONE":
-        print_debug("No workspace ID found in root node or editor metadata")
-        push_error("No workspace ID found in root node or editor metadata")
-        return
 
     var parse_result: = parse_asset_node_deep(old_style_format, base_node, "", root_node_type)
     set_root_node(parse_result["base"])
@@ -1026,7 +1057,7 @@ func parse_root_asset_node(base_node: Dictionary) -> void:
         all_meta["$Groups"] = base_node.get("$Groups", [])
         all_meta["$Comments"] = base_node.get("$Comments", [])
         all_meta["$Links"] = base_node.get("$Links", {})
-        
+    
     loaded = true
 
 func collect_node_positions_old_style_recursive(cur_node_data: Dictionary) -> void:
@@ -1540,6 +1571,7 @@ func load_json(json_data: String) -> void:
         clear_graph()
         loaded = false
     parse_root_asset_node(parsed_json_data)
+    use_json_positions = not parsed_has_no_positions
     create_graph_from_parsed_data()
     loaded = true
     if OS.has_feature("debug"):

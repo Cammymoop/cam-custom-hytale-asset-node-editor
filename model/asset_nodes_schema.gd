@@ -1435,7 +1435,7 @@ func get_id_prefix_for_node_type(node_type: String) -> String:
         "output_value_type": "Positions",
         "settings": {
             "Skip": { "gd_type": TYPE_BOOL, "default_value": false },
-            "PointsY": { "gd_type": TYPE_FLOAT, "default_value": 0.0, "ui_hint": "y_coordinate" },
+            "PointsY": { "gd_type": TYPE_INT, "default_value": 0, "ui_hint": "y_coordinate" },
             "ExportAs": { "gd_type": TYPE_STRING, "default_value": "" },
         },
         "connections": {
@@ -1447,7 +1447,7 @@ func get_id_prefix_for_node_type(node_type: String) -> String:
         "output_value_type": "Positions",
         "settings": {
             "Skip": { "gd_type": TYPE_BOOL, "default_value": false },
-            "PointsY": { "gd_type": TYPE_FLOAT, "default_value": 0.0, "ui_hint": "y_coordinate" },
+            "PointsY": { "gd_type": TYPE_INT, "default_value": 0, "ui_hint": "y_coordinate" },
             "ExportAs": { "gd_type": TYPE_STRING, "default_value": "" },
         },
         "connections": {

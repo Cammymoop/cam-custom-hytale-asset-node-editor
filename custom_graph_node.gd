@@ -30,7 +30,7 @@ func _gui_input(event: InputEvent) -> void:
 func _draw_port(_slot_index: int, port_pos: Vector2i, _left: bool, color: Color) -> void:
     var base_icon: = get_theme_icon("port", "GraphNode") as DPITexture
     
-    var p_size: Vector2i = base_icon.get_size() / 4.
+    var p_size: Vector2i = base_icon.get_size() / 2.
     var icon_offset: Vector2i = -(Vector2(p_size / 2.).round())
     
     draw_texture_rect(base_icon, Rect2(port_pos - (Vector2i.ONE * 2) + icon_offset, p_size + (Vector2i.ONE * 4)), false, color.darkened(0.5))
