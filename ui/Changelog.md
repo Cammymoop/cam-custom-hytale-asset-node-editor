@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.7
+## 0.1.8
 ### Improvements:
 - Add an "Open File" button to the new file popup that shows on opening the editor
 - Separate "Save" and "Save As" - you no longer need to go through the file dialog every time you save
