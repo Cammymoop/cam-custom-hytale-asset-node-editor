@@ -23,6 +23,8 @@ func make_duplicate_special_gn(special_gn: CustomGraphNode, asset_node_set: Arra
 
     var new_main_an = graph_edit.duplicate_and_add_filtered_an_tree(main_asset_node, asset_node_set)
     var new_special_gn: CustomGraphNode = call("make_special_%s" % main_asset_node.an_type, new_main_an, false) as CustomGraphNode
+    new_special_gn.position_offset = special_gn.position_offset
+    new_special_gn.theme_color_output_type = special_gn.theme_color_output_type
     new_special_gn.set_meta("is_special_gn", true)
     return new_special_gn
     
@@ -46,10 +48,15 @@ func make_special_ManualCurve(target_asset_node: HyAssetNode, is_new: bool) -> C
         new_manual_curve_gn.load_points_from_an_connection()
     else:
         for i in 2:
-            var new_curve_point_an: HyAssetNode = graph_edit.get_new_asset_node("CurvePoint")
+            var new_curve_point_an: HyAssetNode = get_new_asset_node("CurvePoint")
             new_curve_point_an.settings["In"] = float(i)
             new_curve_point_an.settings["Out"] = float(i)
             target_asset_node.append_node_to_connection("Points", new_curve_point_an)
         new_manual_curve_gn.load_points_from_an_connection()
 
     return new_manual_curve_gn as CustomGraphNode
+
+func get_new_asset_node(asset_node_type: String) -> HyAssetNode:
+    var new_an: HyAssetNode = graph_edit.get_new_asset_node(asset_node_type)
+    graph_edit.floating_tree_roots.erase(new_an)
+    return new_an

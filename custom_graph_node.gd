@@ -7,6 +7,25 @@ var node_type_schema: Dictionary
 var settings_syncer: SettingsSyncer = null
 @export_storage var theme_color_output_type: String = ""
 
+# For usage in the inpector at runtime to jump to the asset node easier
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR)
+var found_asset_node: HyAssetNode = null
+@export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR)
+var find_asset_node: bool = false:
+    set(value):
+        if not get_meta("hy_asset_node_id", ""):
+            return
+        var graph_edit: = get_parent() as AssetNodeGraphEdit
+        if not graph_edit:
+            print_debug("find asset node: no parent or parent is not AssetNodeGraphEdit")
+            return
+        var an_id: String = get_meta("hy_asset_node_id", "")
+        if not an_id in graph_edit.an_lookup:
+            print_debug("find asset node: asset node ID %s not found in an_lookup" % an_id)
+            return
+        found_asset_node = graph_edit.an_lookup[an_id]
+        notify_property_list_changed()
+
 func make_settings_syncer(asset_node: HyAssetNode) -> SettingsSyncer:
     settings_syncer = SettingsSyncer.new()
     settings_syncer.name = "SettingsSyncer"

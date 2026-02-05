@@ -121,11 +121,6 @@ func get_version_number_string() -> String:
     return get_plain_version() + prerelease_string
 
 func _ready() -> void:
-    %ToastMessageContainer.show_toast_message("4")
-    %ToastMessageContainer.show_toast_message("3")
-    %ToastMessageContainer.show_toast_message("2")
-    %ToastMessageContainer.show_toast_message("1")
-    %ToastMessageContainer.show_toast_message("Go")
     get_window().files_dropped.connect(on_files_dropped)
     assert(popup_menu_root != null, "Popup menu root is not set, please set it in the inspector")
     if not new_node_menu:
@@ -1074,14 +1069,6 @@ func parse_root_asset_node(base_node: Dictionary) -> void:
         for node_id in meta_data.get("$Nodes", {}).keys():
             asset_node_meta[node_id] = meta_data["$Nodes"][node_id]
 
-        for floating_tree in meta_data.get("$FloatingNodes", []):
-            var floating_parse_result: = parse_asset_node_deep(false, floating_tree)
-            floating_tree_roots.append(floating_parse_result["base"])
-            parsed_node_count += floating_parse_result["all_nodes"].size()
-            #print("Floating tree parsed, %d nodes" % floating_parse_result["all_nodes"].size(), " (total: %d)" % parsed_node_count)
-            all_asset_nodes.append_array(floating_parse_result["all_nodes"])
-            for an in floating_parse_result["all_nodes"]:
-                all_asset_node_ids.append(an.an_node_id)
 
     var parse_result: = parse_asset_node_deep(old_style_format, base_node, "", root_node_type)
     set_root_node(parse_result["base"])
@@ -1090,6 +1077,24 @@ func parse_root_asset_node(base_node: Dictionary) -> void:
     #print("Root node parsed, %d nodes" % parse_result["all_nodes"].size(), " (total: %d)" % parsed_node_count)
     for an in parse_result["all_nodes"]:
         all_asset_node_ids.append(an.an_node_id)
+
+    if not old_style_format:
+        for floating_tree in base_node["$NodeEditorMetadata"].get("$FloatingNodes", []):
+            if not floating_tree.has("$NodeId"):
+                push_warning("Floating node does not have a $NodeId, skipping")
+                continue
+            var floating_root_id: String = floating_tree["$NodeId"]
+            if floating_root_id in an_lookup:
+                print_debug("Floating root node %s exists in another tree, assuming it was mistakenly added to floating tree roots, skipping" % floating_root_id)
+                continue
+
+            var floating_parse_result: = parse_asset_node_deep(false, floating_tree)
+            floating_tree_roots.append(floating_parse_result["base"])
+            parsed_node_count += floating_parse_result["all_nodes"].size()
+            #print("Floating tree parsed, %d nodes" % floating_parse_result["all_nodes"].size(), " (total: %d)" % parsed_node_count)
+            all_asset_nodes.append_array(floating_parse_result["all_nodes"])
+            for an in floating_parse_result["all_nodes"]:
+                all_asset_node_ids.append(an.an_node_id)
     
     if old_style_format:
         all_meta = {}
