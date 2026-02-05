@@ -1,4 +1,5 @@
-# Cam Hytale ANE (AssetNodeEditor)
+# Cam Hytale ANE
+## A custom asset node editor for Hytale's WorldGen Asset Nodes
 
 > [!WARNING]
 > PLEASE READ: This is just an early alpha, provided as-is, take care to properly version control or backup any files you may be editing.
