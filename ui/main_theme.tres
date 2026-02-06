@@ -4,6 +4,7 @@
 [ext_resource type="FontFile" uid="uid://43145ahrbd7d" path="res://ui/assets/dejavu-sans.book.ttf" id="1_g1fjd"]
 [ext_resource type="Texture2D" uid="uid://rqgkd8nqk62c" path="res://ui/assets/radio_checked.tres" id="1_joxlk"]
 [ext_resource type="Texture2D" uid="uid://dhprb6qaxt4u0" path="res://ui/assets/graph_node_port_default.tres" id="2_6tukj"]
+[ext_resource type="StyleBox" uid="uid://dmp45p55gnjwj" path="res://ui/assets/editing_stylebox.tres" id="5_lsmgg"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_h2yge"]
 content_margin_left = 4.0
@@ -22,17 +23,17 @@ content_margin_left = 4.0
 content_margin_top = 4.0
 content_margin_right = 4.0
 content_margin_bottom = 4.0
-bg_color = Color(1, 1, 1, 0.34509805)
+bg_color = Color(0, 0, 0, 1)
 draw_center = false
 border_width_left = 2
 border_width_top = 2
 border_width_right = 2
 border_width_bottom = 2
-border_color = Color(0.8001508, 0.8001509, 0.8001508, 0.6901961)
-corner_radius_top_left = 3
-corner_radius_top_right = 3
-corner_radius_bottom_right = 3
-corner_radius_bottom_left = 3
+border_color = Color(0.8267427, 0.97852296, 0.86537224, 0.6901961)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
 corner_detail = 5
 expand_margin_left = 2.0
 expand_margin_top = 2.0
@@ -361,13 +362,17 @@ content_margin_left = 4.0
 content_margin_top = 4.0
 content_margin_right = 4.0
 content_margin_bottom = 4.0
-bg_color = Color(0.51907945, 0.617329, 0.54919434, 1)
+bg_color = Color(0.36530402, 0.49838537, 0.3787686, 1)
 border_color = Color(0, 0, 0, 0.3)
 corner_radius_top_left = 3
 corner_radius_top_right = 3
 corner_radius_bottom_right = 3
 corner_radius_bottom_left = 3
 corner_detail = 5
+
+[sub_resource type="FontVariation" id="FontVariation_lsmgg"]
+base_font = ExtResource("1_g1fjd")
+variation_embolden = 0.5
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_47as2"]
 bg_color = Color(0.48962224, 0.48962224, 0.48962206, 1)
@@ -516,15 +521,15 @@ LabelCheckboxChecked/base_type = &"Label"
 LabelCheckboxChecked/colors/font_color = Color(0.49019608, 0.79607844, 0.6, 1)
 LabelCheckboxUnchecked/base_type = &"Label"
 LabelCheckboxUnchecked/colors/font_color = Color(0.23921569, 0.45490196, 0.32156864, 1)
-LineEdit/colors/caret_color = Color(0.86036915, 0.8603692, 0.8603692, 0.8392157)
+LineEdit/colors/caret_color = Color(0.771297, 0.9464026, 0.82631725, 1)
 LineEdit/colors/clear_button_color = Color(0, 0, 0, 1)
 LineEdit/colors/clear_button_color_pressed = Color(0.096204735, 0.09620475, 0.096204735, 0.827451)
 LineEdit/colors/font_color = Color(0, 0, 0, 1)
 LineEdit/colors/font_outline_color = Color(1, 1, 1, 1)
 LineEdit/colors/font_placeholder_color = Color(0.875, 0.875, 0.875, 0.6)
 LineEdit/colors/font_selected_color = Color(0, 0, 0, 1)
-LineEdit/colors/font_uneditable_color = Color(0.23594871, 0.23594871, 0.23594868, 0.8862745)
-LineEdit/colors/selection_color = Color(0.86036915, 0.8603692, 0.8603692, 0.8392157)
+LineEdit/colors/font_uneditable_color = Color(0.23594871, 0.23594871, 0.23594868, 0.9372549)
+LineEdit/colors/selection_color = Color(0.61229616, 0.88905007, 0.7071337, 1)
 LineEdit/constants/caret_width = 1
 LineEdit/constants/minimum_character_width = 4
 LineEdit/constants/outline_size = 0
@@ -532,6 +537,10 @@ LineEdit/font_sizes/font_size = 12
 LineEdit/styles/focus = SubResource("StyleBoxFlat_1bvp3")
 LineEdit/styles/normal = SubResource("StyleBoxFlat_6iyjs")
 LineEdit/styles/read_only = SubResource("StyleBoxFlat_4w656")
+LineEditEditing/base_type = &"LineEdit"
+LineEditEditing/colors/font_color = Color(0.41960785, 0.7176471, 0.5294118, 1)
+LineEditEditing/fonts/font = SubResource("FontVariation_lsmgg")
+LineEditEditing/styles/normal = ExtResource("5_lsmgg")
 MarginContainer/constants/margin_bottom = 5
 MarginContainer/constants/margin_left = 5
 MarginContainer/constants/margin_right = 5

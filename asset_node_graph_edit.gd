@@ -391,31 +391,39 @@ func add_connection(connection_info: Dictionary, with_undo: bool = true) -> void
     _add_connection(connection_info["from_node"], connection_info["from_port"], connection_info["to_node"], connection_info["to_port"], with_undo)
 
 func _add_connection(from_gn_name: StringName, from_port: int, to_gn_name: StringName, to_port: int, with_undo: bool = true) -> void:
+    var old_multi_conn_change: = multi_connection_change
+    # set multi_connection_change so removed connections get added as part of the same undo step
+    multi_connection_change = true
+
     var from_gn: GraphNode = get_node(NodePath(from_gn_name))
     var to_gn: GraphNode = get_node(NodePath(to_gn_name))
     var from_an: HyAssetNode = an_lookup.get(from_gn.get_meta("hy_asset_node_id", ""))
     var to_an: HyAssetNode = an_lookup.get(to_gn.get_meta("hy_asset_node_id", ""))
-    if from_an.an_type not in SchemaManager.schema.node_schema:
-        print_debug("Warning: From node type %s not found in schema" % from_an.an_type)
+    
+    
+    var existing_output_conn_infos: = raw_out_connections(to_gn)
+    for existing_output in existing_output_conn_infos:
+        remove_connection(existing_output, false)
+    
+    if not from_an or not to_an:
+        print_debug("Warning: From or to asset node not found")
         connect_node(from_gn_name, from_port, to_gn_name, to_port)
         return
 
-    var conn_name: String = from_an.connection_list[from_port]
-    var connect_is_multi: bool = SchemaManager.schema.node_schema[from_an.an_type]["connections"][conn_name].get("multi", false)
-    if connect_is_multi or from_an.num_connected_asset_nodes(conn_name) == 0:
+    if from_an.an_type not in SchemaManager.schema.node_schema:
+        print_debug("Warning: From node type %s not found in schema" % from_an.an_type)
+        var conn_name: String = from_an.connection_list[from_port]
         from_an.append_node_to_connection(conn_name, to_an)
     else:
-        var prev_connected_node: HyAssetNode = from_an.get_connected_node(conn_name, 0)
-        var was_removed: bool = false
-        if prev_connected_node and gn_lookup.has(prev_connected_node.an_node_id):
-            was_removed = true
-            _remove_connection(from_gn_name, from_port, gn_lookup[prev_connected_node.an_node_id].name, 0)
-        from_an.append_node_to_connection(conn_name, to_an)
-        if was_removed:
-            var connected_node_keys: Array[String] = from_an.connected_asset_nodes.keys()
-            var pretty_print: Dictionary = {}
-            for conn_key in connected_node_keys:
-                pretty_print[conn_key] = from_an.connected_asset_nodes[conn_key].an_node_id
+        var conn_name: String = from_an.connection_list[from_port]
+        var connect_is_multi: bool = SchemaManager.schema.node_schema[from_an.an_type]["connections"][conn_name].get("multi", false)
+        if connect_is_multi or from_an.num_connected_asset_nodes(conn_name) == 0:
+            from_an.append_node_to_connection(conn_name, to_an)
+        else:
+            var prev_connected_node: HyAssetNode = from_an.get_connected_node(conn_name, 0)
+            if prev_connected_node and gn_lookup.has(prev_connected_node.an_node_id):
+                _remove_connection(from_gn_name, from_port, gn_lookup[prev_connected_node.an_node_id].name, 0)
+            from_an.append_node_to_connection(conn_name, to_an)
     
     if to_an in floating_tree_roots:
         floating_tree_roots.erase(to_an)
@@ -427,6 +435,9 @@ func _add_connection(from_gn_name: StringName, from_port: int, to_gn_name: Strin
             "to_node": to_gn_name,
             "to_port": to_port,
         })
+
+    # restore multi_connection_change to whatever it was in the outer context
+    multi_connection_change = old_multi_conn_change
     connect_node(from_gn_name, from_port, to_gn_name, to_port)
     if with_undo and not multi_connection_change:
         create_undo_connection_change_step()
@@ -448,6 +459,9 @@ func remove_multiple_connections(conns_to_remove: Array[Dictionary], with_undo: 
 func remove_connection(connection_info: Dictionary, with_undo: bool = true) -> void:
     _remove_connection(connection_info["from_node"], connection_info["from_port"], connection_info["to_node"], connection_info["to_port"], with_undo)
 
+func disconnect_connection_info(conn_info: Dictionary) -> void:
+    disconnect_node(conn_info["from_node"], conn_info["from_port"], conn_info["to_node"], conn_info["to_port"])
+
 func _remove_connection(from_gn_name: StringName, from_port: int, to_gn_name: StringName, to_port: int, with_undo: bool = true) -> void:
     disconnect_node(from_gn_name, from_port, to_gn_name, to_port)
 
@@ -456,7 +470,9 @@ func _remove_connection(from_gn_name: StringName, from_port: int, to_gn_name: St
     var from_an: HyAssetNode = an_lookup.get(from_gn.get_meta("hy_asset_node_id", ""))
     var from_connection_name: String = from_an.connection_list[from_port]
     var to_an: HyAssetNode = an_lookup.get(to_gn.get_meta("hy_asset_node_id", ""))
-    from_an.remove_node_from_connection(from_connection_name, to_an)
+
+    if from_an and to_an:
+        from_an.remove_node_from_connection(from_connection_name, to_an)
     
     if with_undo:
         cur_removed_connections.append({
@@ -1413,11 +1429,30 @@ func new_graph_node(asset_node: HyAssetNode, newly_created: bool) -> CustomGraph
                     setting_type = typeof(setting_value) if setting_value else TYPE_STRING
                 
                 var ui_hint: String = node_schema.get("settings", {})[setting_name].get("ui_hint", "")
-                if ui_hint:
-                    prints("ui hint for %s: %s" % [setting_name, ui_hint])
 
                 var slot_node: Control = HBoxContainer.new()
 
+                # Standard settings editors, potentially overridden below by custom stuff based on ui_hint etc
+                if setting_type == TYPE_BOOL:
+                    s_edit = CheckBox.new()
+                    s_edit.button_pressed = setting_value
+                elif setting_type == TYPE_FLOAT or setting_type == TYPE_INT:
+                    s_edit = GNNumberEdit.new()
+                    s_edit.is_int = setting_type == TYPE_INT
+                    s_edit.set_value_directly(setting_value)
+                    s_edit.size_flags_horizontal = Control.SIZE_FILL
+                    s_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+                else:
+                    s_edit = CustomLineEdit.new()
+                    s_edit.text = str(setting_value)
+                    s_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+                    s_name.size_flags_horizontal = Control.SIZE_FILL
+                    if ui_hint == "block_id":
+                        s_edit.custom_minimum_size.x = 140
+                    #if setting_type == TYPE_FLOAT or setting_type == TYPE_INT:
+                        #s_edit.alignment = HORIZONTAL_ALIGNMENT_RIGHT
+
+                # Special settings editors based on type and ui_hint etc
                 if ui_hint == "string_enum":
                     prints("making exclusive enum edit for %s" % setting_name)
                     s_edit = preload("res://ui/data_editors/exclusive_enum.tscn").instantiate() as GNExclusiveEnumEdit
@@ -1450,24 +1485,18 @@ func new_graph_node(asset_node: HyAssetNode, newly_created: bool) -> CustomGraph
                         s_edit.setup(valid_values, converted_values)
                     else:
                         s_edit.setup(valid_values, setting_value)
-                elif setting_type == TYPE_BOOL:
-                    s_edit = CheckBox.new()
-                    s_edit.button_pressed = setting_value
-                elif setting_type == TYPE_FLOAT or setting_type == TYPE_INT:
-                    s_edit = GNNumberEdit.new()
-                    s_edit.is_int = setting_type == TYPE_INT
-                    s_edit.set_value_directly(setting_value)
-                    s_edit.size_flags_horizontal = Control.SIZE_FILL
-                    s_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-                else:
-                    s_edit = LineEdit.new()
-                    s_edit.text = str(setting_value)
-                    s_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-                    s_name.size_flags_horizontal = Control.SIZE_FILL
-                    if ui_hint == "block_id":
-                        s_edit.custom_minimum_size.x = 140
-                    #if setting_type == TYPE_FLOAT or setting_type == TYPE_INT:
-                        #s_edit.alignment = HORIZONTAL_ALIGNMENT_RIGHT
+                elif ui_hint.begins_with("int_range:"):
+                    var range_parts: = ui_hint.trim_prefix("int_range:").split("_", true)
+                    if range_parts.size() != 2:
+                        push_warning("Invalid int range hint %s for %s:%s" % [ui_hint, asset_node.an_type, setting_name])
+                    else:
+                        var has_min: = range_parts[0].is_valid_int()
+                        var has_max: = range_parts[1].is_valid_int()
+                        s_edit = GNNumberEdit.new()
+                        
+                elif ui_hint:
+                    prints("UI hint %s for %s:%s has no handling" % [ui_hint, asset_node.an_type, setting_name])
+                
 
                 s_edit.name = "SettingEdit_%s" % setting_name
                 slot_node.name = "Slot%d" % i
@@ -1661,8 +1690,8 @@ func load_json(json_data: String) -> void:
     use_json_positions = not parsed_has_no_positions
     create_graph_from_parsed_data()
     loaded = true
-    if OS.has_feature("debug"):
-        test_reserialize_to_file(parsed_json_data)
+    print("")
+    
 
 func _requested_open_file(path: String) -> void:
     open_file_with_prompt(path)
@@ -2038,15 +2067,6 @@ func single_node_metadata(scaled_positions: bool, an: HyAssetNode, owning_gn: Gr
     metadata["$Position"] = { "$x": position_offset.x, "$y": position_offset.y }
     return metadata
 
-func test_reserialize_to_file(data_from_json: Dictionary) -> void:
-    var file_path: = "user://test_reserialize.json"
-    var file: = FileAccess.open(file_path, FileAccess.WRITE)
-    if not file:
-        print_debug("Error opening JSON file for writing (test reserialize): %s" % file_path)
-        return
-    file.store_string(JSON.stringify(data_from_json, "  ", false))
-    file.close()
-
 func on_new_node_type_picked(node_type: String) -> void:
     var new_an: HyAssetNode = get_new_asset_node(node_type)
     var new_gn: CustomGraphNode = null
@@ -2217,6 +2237,22 @@ func new_graph_node_name(base_name: String) -> String:
 func raw_connections(graph_node: CustomGraphNode) -> Array[Dictionary]:
     assert(is_same(graph_node.get_parent(), self), "raw_connections: Graph node is not a direct child of the graph edit")
     return get_connection_list_from_node(graph_node.name)
+
+func raw_out_connections(graph_node: CustomGraphNode) -> Array[Dictionary]:
+    var raw_gn_connections: = raw_connections(graph_node)
+    var out_conn_infos: Array[Dictionary] = []
+    for conn_info in raw_gn_connections:
+        if conn_info["to_node"] == graph_node.name:
+            out_conn_infos.append(conn_info)
+    return out_conn_infos
+
+func raw_in_connections(graph_node: CustomGraphNode) -> Array[Dictionary]:
+    var raw_gn_connections: = raw_connections(graph_node)
+    var in_conn_infos: Array[Dictionary] = []
+    for conn_info in raw_gn_connections:
+        if conn_info["from_node"] == graph_node.name:
+            in_conn_infos.append(conn_info)
+    return in_conn_infos
 
 func can_delete_gn(graph_node: CustomGraphNode) -> bool:
     if graph_node == get_root_gn():

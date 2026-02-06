@@ -10,6 +10,8 @@ For use with Hytale pre-release/2026.02.05 and later
 ### Improvements:
 - Options with a limited set of values now use a dropdown selector (like Distance Function for Positions Cell Noise)
 - Options that consist of a set of limited values now use a set of checkboxes (like Directions for Wall Pattern)
+- Can now save custom theme colors, these will also be loaded automatically on startup
+- Improved unchecked checkbox appearance
 
 ### Fixes:
 - Added missing Pattern Directionality

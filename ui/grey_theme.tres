@@ -1,5 +1,7 @@
 [gd_resource type="Theme" format=3 uid="uid://cavvrgn7xx6ho"]
 
+[ext_resource type="StyleBox" uid="uid://dmp45p55gnjwj" path="res://ui/assets/editing_stylebox.tres" id="1_yr3iu"]
+
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_h2yge"]
 content_margin_left = 4.0
 content_margin_top = 4.0
@@ -17,17 +19,17 @@ content_margin_left = 4.0
 content_margin_top = 4.0
 content_margin_right = 4.0
 content_margin_bottom = 4.0
-bg_color = Color(1, 1, 1, 0.34509805)
+bg_color = Color(0, 0, 0, 1)
 draw_center = false
 border_width_left = 2
 border_width_top = 2
 border_width_right = 2
 border_width_bottom = 2
 border_color = Color(0.8001508, 0.8001509, 0.8001508, 0.6901961)
-corner_radius_top_left = 3
-corner_radius_top_right = 3
-corner_radius_bottom_right = 3
-corner_radius_bottom_left = 3
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
 corner_detail = 5
 expand_margin_left = 2.0
 expand_margin_top = 2.0
@@ -542,6 +544,9 @@ LineEdit/font_sizes/font_size = 12
 LineEdit/styles/focus = SubResource("StyleBoxFlat_1bvp3")
 LineEdit/styles/normal = SubResource("StyleBoxFlat_xytfd")
 LineEdit/styles/read_only = SubResource("StyleBoxFlat_yr3iu")
+LineEditEditing/base_type = &"LineEdit"
+LineEditEditing/colors/font_color = Color(0.69411767, 0.69411767, 0.69411767, 1)
+LineEditEditing/styles/normal = ExtResource("1_yr3iu")
 MarginContainer/constants/margin_bottom = 0
 MarginContainer/constants/margin_left = 0
 MarginContainer/constants/margin_right = 0

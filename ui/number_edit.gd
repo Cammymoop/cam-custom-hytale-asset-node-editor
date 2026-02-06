@@ -1,4 +1,4 @@
-extends LineEdit
+extends CustomLineEdit
 class_name GNNumberEdit
 
 signal val_changed(new_value: float)
@@ -14,11 +14,20 @@ func _ready() -> void:
     focus_exited.connect(on_focus_out)
     text_submitted.connect(text_change_done.unbind(1))
     text_changed.connect(on_text_changed)
+    redisplay_value()
+    
+func update_tooltip_text() -> void:
+    if is_int:
+        tooltip_text = "%d" % int(value)
+    else:
+        tooltip_text = "%s" % value
 
 
 func set_value_directly(new_value: float) -> void:
-    value = new_value
-    text_dirty = false
+    if is_int:
+        value = roundf(new_value)
+    else:
+        value = new_value
     redisplay_value()
 
 func on_text_changed(_new_text: String) -> void:
@@ -34,14 +43,34 @@ func text_change_done() -> void:
     value_updated()
 
 func get_value_from_text() -> void:
-    value = float(text)
-    val_changed.emit(value)
+    if not text.is_valid_float():
+        print_debug("Trying to use non-numeric text as an expression: %s" % text)
+        get_value_from_expression(text)
+        return
+
+    if is_int:
+        value = int(float(text))
+    else:
+        value = float(text)
+
+func get_value_from_expression(expr_text: String) -> void:
+    # if the expression is invalid or fails to execute, don't update the value at all
+    # the text will return to the last valid value
+    if not ExpressionHelper.is_valid_expression(expr_text):
+        return
+    var result: = ExpressionHelper.get_expression_numerical_value(expr_text)
+    if not result[0]:
+        return
+
+    print_debug("Expression '%s' evaluated to %s" % [expr_text, result[1]])
+    if is_int:
+        value = int(result[1])
+    else:
+        value = result[1]
 
 func value_updated() -> void:
-    if is_int:
-        value = roundf(value)
-    text_dirty = false
     redisplay_value()
+    val_changed.emit(value)
 
 func get_decimal_places() -> int:
     if custom_decimal_places != -1:
@@ -54,8 +83,15 @@ func get_snap_float() -> float:
     return snap_float
 
 func redisplay_value() -> void:
+    text_dirty = false
+    update_tooltip_text()
+    if is_int:
+        text = str(int(value))
+        return
+
     var rounded_val: = snappedf(value, get_snap_float())
-    if rounded_val == int(rounded_val):
+    if is_equal_approx(rounded_val, int(rounded_val)):
         text = str(int(rounded_val))
     else:
+        prints("Rounded value is not an integer: %s != %s, (value: %s, int diff: %s)" % [rounded_val, int(rounded_val), value, rounded_val - int(rounded_val)])
         text = str(rounded_val)

@@ -2,6 +2,7 @@
 
 [ext_resource type="Theme" uid="uid://cv3cabit36ilb" path="res://ui/main_theme.tres" id="1_0xm2m"]
 [ext_resource type="Script" uid="uid://b2hqpos1gajgs" path="res://asset_node_graph_edit.gd" id="1_ig7tw"]
+[ext_resource type="Script" uid="uid://dyc1epdruun6x" path="res://ui/custom_line_edit.gd" id="4_074og"]
 [ext_resource type="Script" uid="uid://dyeeven10x5a6" path="res://dialog_handler.gd" id="5_7mycd"]
 [ext_resource type="Script" uid="uid://d2ucs5vp8diew" path="res://custom_graph_nodes/special_gn_factory.gd" id="5_lquwl"]
 [ext_resource type="Script" uid="uid://c7vsellvjd3jj" path="res://ui/new_gn_menu.gd" id="6_7mycd"]
@@ -315,11 +316,12 @@ layout_mode = 2
 layout_mode = 2
 text = "Skip:"
 
-[node name="LineEdit" type="LineEdit" parent="AssetNodeGraphEdit/TestGN/HBoxContainer2" unique_id=1695382203]
+[node name="LineEdit" type="LineEdit" parent="AssetNodeGraphEdit/TestGN/HBoxContainer2" unique_id=1357374947]
 layout_mode = 2
 size_flags_horizontal = 3
 text = "asd"
 clear_button_enabled = true
+script = ExtResource("4_074og")
 
 [node name="DialogHandler" type="Node" parent="." unique_id=1722932133]
 script = ExtResource("5_7mycd")
@@ -473,6 +475,7 @@ layout_mode = 2
 size_flags_horizontal = 3
 
 [node name="FocusStop" type="ColorRect" parent="PopupMenuRoot" unique_id=840984799]
+visible = false
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -570,9 +573,10 @@ theme_override_constants/margin_bottom = 4
 layout_mode = 2
 alignment = 1
 
-[node name="LineEdit" type="LineEdit" parent="PopupMenuRoot/FocusStop/CenterContainer/ThemeEditor/VBoxContainer/PanelContainer/MarginContainer/VBoxContainer/ThemeColorsFlow/AddColorBtn/PopupPanel/MarginContainer/HBoxContainer" unique_id=734923633]
+[node name="LineEdit" type="LineEdit" parent="PopupMenuRoot/FocusStop/CenterContainer/ThemeEditor/VBoxContainer/PanelContainer/MarginContainer/VBoxContainer/ThemeColorsFlow/AddColorBtn/PopupPanel/MarginContainer/HBoxContainer" unique_id=1581707071]
 layout_mode = 2
 size_flags_horizontal = 3
+script = ExtResource("4_074og")
 
 [node name="Button" type="Button" parent="PopupMenuRoot/FocusStop/CenterContainer/ThemeEditor/VBoxContainer/PanelContainer/MarginContainer/VBoxContainer/ThemeColorsFlow/AddColorBtn/PopupPanel/MarginContainer/HBoxContainer" unique_id=830682786]
 layout_mode = 2

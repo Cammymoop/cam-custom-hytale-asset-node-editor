@@ -36,7 +36,6 @@ func show_open_file_dialog() -> void:
     
     #print("Showing open file dialog")
     
-    print("Current directory: %s" % [file_dialog.current_dir])
     add_child(file_dialog, true)
     file_dialog.popup_file_dialog()
 
@@ -127,7 +126,6 @@ func _load_recent_cache() -> void:
     recent_file.close()
 
 func save_last_directory(last_path: String) -> void:
-    print("Saving last directory: %s" % last_path)
     var file: = FileAccess.open(LAST_DIR_CACHE_FILE, FileAccess.WRITE)
     if not file:
         print_debug("Error opening last directory cache file for writing: %s" % LAST_DIR_CACHE_FILE)
