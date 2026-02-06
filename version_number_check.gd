@@ -31,7 +31,9 @@ func _run() -> void:
 
 func _notification(what: int) -> void:
     if what == NOTIFICATION_PREDELETE:
-        end_script()
+        if ref_holder:
+            ref_holder.queue_free()
+            ref_holder = null
 
 func end_script() -> void:
     if ref_holder:
@@ -146,7 +148,7 @@ func get_latest_tag_version() -> String:
     if exec_code != 0:
         show_error_dialog("Failed to get latest tag version")
         return ""
-    for line: String in output:
+    for line: String in output[0].split("\n"):
         if line.strip_edges().begins_with("v") and line.contains("."):
             return line.strip_edges()
     show_error_dialog("Did not find a version-like tag")
@@ -223,11 +225,11 @@ func apply_version_increment(cur_project_version: String, cur_tag_version: Strin
         project_settings.save("res://project.godot")
     
     if cur_tag_version != new_version:
-        var output: Array = []
+        var output: Array[String] = []
         var exec_code: = OS.execute("git", ["add", "."], output)
         if exec_code != 0:
             show_error_dialog("Failed executing git to add project.godot")
-            print("git errot output: %s" % "\n".join(output))
+            print("git errot output: %s" % output[0])
             return ""
 
         var commit_message: = "Increment version to %s" % new_version
@@ -236,31 +238,31 @@ func apply_version_increment(cur_project_version: String, cur_tag_version: Strin
         exec_code = OS.execute("git", ["commit", "-m", commit_message], output)
         if exec_code != 0:
             show_error_dialog("Failed executing git to commit project.godot")
-            print("git errot output: %s" % "\n".join(output))
+            print("git errot output: %s" % output[0])
             return ""
 
         exec_code = OS.execute("git", ["tag", "-a", "v%s" % new_version, "-m", "Version %s" % new_version], output)
         if exec_code != 0:
             show_error_dialog("Failed executing git to create version tag")
-            print("git errot output: %s" % "\n".join(output))
+            print("git errot output: %s" % output[0])
             return ""
 
     return new_version
 
 func is_uncommitted_changes() -> bool:
-    var output: Array = []
+    var output: Array[String] = []
     var exec_code: = OS.execute("git", ["status", "--porcelain"], output)
     if exec_code != 0:
         show_error_dialog("Failed executing git to check for uncommitted changes")
         return true
     var line_count: = 0
-    for line: String in output:
+    for line: String in output[0].split("\n"):
         if line.strip_edges().length() > 0:
             line_count += 1
     return line_count > 0
 
 func push_tag() -> bool:
-    var output: Array = []
+    var output: Array[String] = []
     var exec_code: = OS.execute("git", ["push", "--tags"], output)
     if exec_code != 0:
         show_error_dialog("Failed executing git to push tags")
@@ -268,17 +270,17 @@ func push_tag() -> bool:
     return true
 
 func check_for_remote_tag(tag_version: String) -> bool:
-    var output: Array = []
+    var output: Array[String] = []
     var search_string: = "refs/tags/v%s" % tag_version
 
     var exec_code: = OS.execute("git", ["ls-remote", "--tags"], output)
     if exec_code != 0:
         show_error_dialog("Failed executing git to check for remote tags")
-        print("git error output: %s" % "\n".join(output))
+        print("git error output: %s" % output[0])
         return false
     for line: String in output:
         if line.contains(search_string):
             print("remote tag found: %s" % line)
             return true
-    print("remote tag '%s' not found: %s" % [search_string, output])
+    print("remote tag '%s' not found: %s" % [search_string, output[0]])
     return false
