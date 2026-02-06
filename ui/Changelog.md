@@ -1,6 +1,7 @@
 # Changelog
 
 ## 0.2.0
+For use with Hytale pre-release/2026.02.05 and later
 ### New Upstream Changes:
 - Materials now have directionality
 - Added YSampled Density (Defines sample spacing in Y and interpolates density values between samples)
@@ -14,6 +15,7 @@
 - Added missing Pattern Directionality
 - Added missing Delimiter for Field Function Positions Provider
 - Fix Positions Cell Noise distance function types being treated as 2 separate node types
+
 
 ## 0.1.8
 ### Improvements:
