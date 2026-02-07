@@ -333,10 +333,6 @@ corner_radius_bottom_right = 3
 corner_radius_bottom_left = 3
 corner_detail = 5
 
-[sub_resource type="FontVariation" id="FontVariation_lsmgg"]
-base_font = ExtResource("1_g1fjd")
-variation_embolden = 0.5
-
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_47as2"]
 bg_color = Color(0.48962224, 0.48962224, 0.48962206, 1)
 
@@ -491,7 +487,7 @@ LineEdit/colors/font_selected_color = Color(0, 0, 0, 1)
 LineEdit/colors/font_uneditable_color = Color(0.23594871, 0.23594871, 0.23594868, 0.9372549)
 LineEdit/colors/selection_color = Color(0.61229616, 0.88905007, 0.7071337, 1)
 LineEdit/constants/caret_width = 1
-LineEdit/constants/minimum_character_width = 4
+LineEdit/constants/minimum_character_width = 2
 LineEdit/constants/outline_size = 0
 LineEdit/font_sizes/font_size = 12
 LineEdit/styles/focus = SubResource("StyleBoxFlat_1bvp3")
@@ -499,7 +495,6 @@ LineEdit/styles/normal = SubResource("StyleBoxFlat_6iyjs")
 LineEdit/styles/read_only = SubResource("StyleBoxFlat_4w656")
 LineEditEditing/base_type = &"LineEdit"
 LineEditEditing/colors/font_color = Color(0.41960785, 0.7176471, 0.5294118, 1)
-LineEditEditing/fonts/font = SubResource("FontVariation_lsmgg")
 LineEditEditing/styles/normal = ExtResource("5_lsmgg")
 MarginContainer/constants/margin_bottom = 5
 MarginContainer/constants/margin_left = 5

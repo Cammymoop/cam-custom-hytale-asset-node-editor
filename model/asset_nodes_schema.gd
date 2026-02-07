@@ -511,7 +511,7 @@ func get_value_set_values(value_set: String) -> Array:
         "display_name": "Constant Density",
         "output_value_type": "Density",
         "settings": {
-            "Value": { "gd_type": TYPE_FLOAT, "default_value": 0.0, "ui_hint": "float_range:-1_1" },
+            "Value": { "gd_type": TYPE_FLOAT, "default_value": 0.0, "ui_hint": "float_range:-1_1", "ui_soft_range": true },
             "Skip": { "gd_type": TYPE_BOOL, "default_value": false },
             "ExportAs": { "gd_type": TYPE_STRING, "default_value": "" },
         }
@@ -2036,7 +2036,7 @@ func get_value_set_values(value_set: String) -> Array:
         "output_value_type": "Runtime",
         "settings": {
             "Skip": { "gd_type": TYPE_BOOL, "default_value": false },
-            "Runtime": { "gd_type": TYPE_INT, "default_value": 0 },
+            "Runtime": { "gd_type": TYPE_INT, "default_value": 0, "ui_hint": "int_range:0_" },
         },
         "connections": {
             "Positions": { "value_type": "Positions", "multi": false },

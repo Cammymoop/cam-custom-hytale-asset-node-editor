@@ -166,6 +166,8 @@ func _ready() -> void:
     last_menu_hbox_item.add_child(version_label)
     version_label.offset_left = 12
     
+    type_names[type_names.size()] = "Unknown"
+    
     for val_type_name in SchemaManager.schema.value_types:
         var val_type_idx: = type_names.size()
         type_names[val_type_idx] = val_type_name
@@ -249,32 +251,7 @@ func _process(_delta: float) -> void:
     elif Input.is_action_just_pressed(&"graph_deselect_all_nodes"):
         deselect_all()
 
-    if Input.is_action_just_pressed("ui_redo"):
-        if undo_manager.has_redo():
-            print("Redoing")
-            undo_manager.redo()
-        else:
-            %ToastMessageContainer.show_toast_message("Nothing to Redo")
-    # NOTE we do need this to be elif, because pressing ctr+shift+z registers as a ctr+z action being pressed too
-    elif Input.is_action_just_pressed("ui_undo"):
-        if undo_manager.has_undo():
-            print("Undoing")
-            # undoing could mean that the previously cut nodes are now back in the graph, assume we need to treat the cut like a copy now
-            if copied_nodes and clipboard_was_from_cut:
-                clipboard_was_from_cut = false
-            undo_manager.undo()
-            #if not undo_manager.has_undo():
-            #    unedited = true
-        else:
-            %ToastMessageContainer.show_toast_message("Nothing to Undo")
 
-    if Input.is_action_just_pressed("show_new_node_menu"):
-        if not loaded:
-            popup_menu_root.show_new_file_type_chooser()
-        elif not new_node_menu.visible:
-            clear_next_drop()
-            new_node_menu.open_all_menu()
-    
     if cur_zoom_level != zoom:
         on_zoom_changed()
 
@@ -370,6 +347,33 @@ func _gui_input(event: InputEvent) -> void:
         if is_mouse_wheel_event(event):
             return
         handle_mouse_event(event as InputEventMouse)
+    
+    if Input.is_action_just_pressed_by_event("show_new_node_menu", event):
+        if not loaded:
+            popup_menu_root.show_new_file_type_chooser()
+        elif not new_node_menu.visible:
+            clear_next_drop()
+            new_node_menu.open_all_menu()
+
+    if Input.is_action_just_pressed_by_event("ui_redo", event):
+        if undo_manager.has_redo():
+            print("Redoing")
+            undo_manager.redo()
+        else:
+            %ToastMessageContainer.show_toast_message("Nothing to Redo")
+    # NOTE we do need this to be elif, because pressing ctr+shift+z registers as a ctr+z action being pressed too
+    elif Input.is_action_just_pressed_by_event("ui_undo", event):
+        if undo_manager.has_undo():
+            print("Undoing")
+            # undoing could mean that the previously cut nodes are now back in the graph, assume we need to treat the cut like a copy now
+            if copied_nodes and clipboard_was_from_cut:
+                clipboard_was_from_cut = false
+            undo_manager.undo()
+            #if not undo_manager.has_undo():
+            #    unedited = true
+        else:
+            %ToastMessageContainer.show_toast_message("Nothing to Undo")
+        
 
 func _connection_request(from_gn_name: StringName, from_port: int, to_gn_name: StringName, to_port: int) -> void:
     _add_connection(from_gn_name, from_port, to_gn_name, to_port)
@@ -1377,6 +1381,9 @@ func new_graph_node(asset_node: HyAssetNode, newly_created: bool) -> CustomGraph
     if asset_node.an_type and asset_node.an_type != "Unknown":
         node_schema = SchemaManager.schema.node_schema[asset_node.an_type]
         graph_node.set_node_type_schema(node_schema)
+    
+    # NOTE: dumb hack
+    get_parent().add_child(graph_node)
 
     if is_special:
         pass
@@ -1387,16 +1394,11 @@ func new_graph_node(asset_node: HyAssetNode, newly_created: bool) -> CustomGraph
             num_inputs = 0
         
         var connection_names: Array
-        var connection_types: Array[int]
         if node_schema:
             var type_connections: Dictionary = node_schema.get("connections", {})
             connection_names = type_connections.keys()
-            for conn_name in connection_names:
-                connection_types.append(type_id_lookup[type_connections[conn_name]["value_type"]])
         else:
             connection_names = asset_node.connections.keys()
-            connection_types.resize(connection_names.size())
-            connection_types.fill(type_id_lookup["Single"])
         var num_outputs: = connection_names.size()
         
         var setting_names: Array
@@ -1443,12 +1445,15 @@ func new_graph_node(asset_node: HyAssetNode, newly_created: bool) -> CustomGraph
                     s_edit.button_pressed = setting_value
                 elif setting_type == TYPE_FLOAT or setting_type == TYPE_INT:
                     s_edit = GNNumberEdit.new()
+                    s_edit.expand_to_text_length = true
                     s_edit.is_int = setting_type == TYPE_INT
                     s_edit.set_value_directly(setting_value)
                     s_edit.size_flags_horizontal = Control.SIZE_FILL
                     s_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
                 else:
                     s_edit = CustomLineEdit.new()
+                    s_edit.expand_to_text_length = true
+                    s_edit.add_theme_constant_override("minimum_character_width", 4)
                     s_edit.text = str(setting_value)
                     s_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
                     s_name.size_flags_horizontal = Control.SIZE_FILL
@@ -1497,8 +1502,24 @@ func new_graph_node(asset_node: HyAssetNode, newly_created: bool) -> CustomGraph
                     else:
                         var has_min: = range_parts[0].is_valid_int()
                         var has_max: = range_parts[1].is_valid_int()
-                        s_edit = GNNumberEdit.new()
-                        
+                        var spin: CustomSpinBox = preload("res://ui/data_editors/spin_box_edit.tscn").instantiate()
+                        spin.step = 1
+                        spin.rounded = true
+                        if has_min and has_max:
+                            spin.min_value = int(range_parts[0])
+                            spin.max_value = int(range_parts[1])
+                        elif has_max:
+                            spin.max_value = int(range_parts[1])
+                            spin.min_value = -spin.max_value
+                            spin.allow_lesser = true
+                        elif has_min:
+                            spin.min_value = int(range_parts[0])
+                            spin.max_value = 1000000
+                            spin.allow_greater = true
+                        spin.value = int(float(setting_value))
+                        s_edit = spin
+                elif ui_hint == "block_id":
+                    s_edit.add_theme_constant_override("minimum_character_width", 14)
                 elif ui_hint:
                     prints("UI hint %s for %s:%s has no handling" % [ui_hint, asset_node.an_type, setting_name])
                 
@@ -1517,14 +1538,19 @@ func new_graph_node(asset_node: HyAssetNode, newly_created: bool) -> CustomGraph
                 graph_node.add_child(slot_node, true)
                 if i < num_inputs:
                     graph_node.set_slot_enabled_left(i, true)
-                    graph_node.set_slot_type_left(i, type_id_lookup[output_type])
                 if i < num_outputs:
                     graph_node.set_slot_enabled_right(i, true)
-                    graph_node.set_slot_type_right(i, connection_types[i])
                     slot_node.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
                     slot_node.text = connection_names[i]
-    
+
+        # seting up the slot types after all the slot nodes are added so it doesn't complain
+        if node_schema:
+            graph_node.update_slot_types(type_id_lookup)
+
     graph_node.update_port_colors()
+    
+    # NOTE: dumb hack
+    get_parent().remove_child(graph_node)
     
     if use_json_positions:
         var meta_pos: = get_node_position_from_meta(asset_node.an_node_id) * json_positions_scale

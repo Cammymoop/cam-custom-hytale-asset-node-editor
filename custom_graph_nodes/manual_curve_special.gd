@@ -16,32 +16,23 @@ var graph_container: Control
 const POINTS_CONNECTION_NAME: String = "Points"
 
 func _ready() -> void:
+    setup_ports()
     setup_graph_container()
     mode_buttons.allow_all_off = false
     mode_buttons.option_changed.connect(on_mode_changed)
     new_point_button.pressed.connect(add_new_point)
 
+func setup_ports() -> void:
+    # note, don't need to add a child control to enable the first port because there's already multiple children from the scene
+    set_slot_enabled_left(0, true)
+    set_slot_type_left(0, graph_edit.type_id_lookup["Curve"])
+
+
 func get_current_connection_list() -> Array[String]:
-    #setup_asset_node()
     return []
 
 func filter_child_connection_nodes(_conn_name: String) -> Array[HyAssetNode]:
-    #setup_asset_node()
     return []
-
-func setup(the_graph_edit: AssetNodeGraphEdit) -> void:
-    graph_edit = the_graph_edit
-    setup_asset_node()
-
-func setup_asset_node() -> void:
-    if not graph_edit:
-        graph_edit = get_parent() as AssetNodeGraphEdit
-    if not asset_node:
-        var an_id: String = get_meta("hy_asset_node_id", "")
-        if an_id not in graph_edit.an_lookup:
-            print_debug("Asset node with ID %s not found in lookup" % an_id)
-            return
-        asset_node = graph_edit.an_lookup[an_id]
 
 func get_own_asset_nodes() -> Array[HyAssetNode]:
     var ans: Array[HyAssetNode] = [asset_node]

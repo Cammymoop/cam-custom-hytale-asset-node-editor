@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.2
+### Fixes:
+- Fix Manual Curve not being able to connect back to a Curve connection port
+
 ## 0.2.1
 ### Improvements:
 - Can now save custom theme colors

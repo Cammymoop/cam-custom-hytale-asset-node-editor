@@ -111,6 +111,7 @@ func _make_theme_color_variant(color_name: String, color_color: Color) -> void:
     
     make_colored_duplicate_sb_flat.call("normal", "LineEdit", true)
     make_colored_duplicate_sb_flat.call("read_only", "LineEdit", true)
+    make_colored_duplicate_sb_flat.call("focus", "LineEdit", false, true)
     
     make_recolors.call(["font_color", "selection_color", "font_uneditable_color", "caret_color"], "LineEdit")
     make_recolors.call(["font_color"], "LineEditEditing")

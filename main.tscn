@@ -2,7 +2,7 @@
 
 [ext_resource type="Theme" uid="uid://cv3cabit36ilb" path="res://ui/main_theme.tres" id="1_0xm2m"]
 [ext_resource type="Script" uid="uid://b2hqpos1gajgs" path="res://asset_node_graph_edit.gd" id="1_ig7tw"]
-[ext_resource type="Script" uid="uid://dyc1epdruun6x" path="res://ui/custom_line_edit.gd" id="4_074og"]
+[ext_resource type="Script" uid="uid://dyc1epdruun6x" path="res://ui/data_editors/custom_line_edit.gd" id="4_074og"]
 [ext_resource type="Script" uid="uid://dyeeven10x5a6" path="res://dialog_handler.gd" id="5_7mycd"]
 [ext_resource type="Script" uid="uid://d2ucs5vp8diew" path="res://custom_graph_nodes/special_gn_factory.gd" id="5_lquwl"]
 [ext_resource type="Script" uid="uid://c7vsellvjd3jj" path="res://ui/new_gn_menu.gd" id="6_7mycd"]

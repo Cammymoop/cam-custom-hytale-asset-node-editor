@@ -17,6 +17,9 @@ func rebind_signals() -> void:
         elif input_control is GNExclusiveEnumEdit:
             if not input_control.option_changed.is_connected(on_value_changed):
                 input_control.option_changed.connect(on_value_changed.bind(setting_name))
+        elif input_control is Range:
+            if not input_control.value_changed.is_connected(on_value_changed):
+                input_control.value_changed.connect(on_value_changed.bind(setting_name))
         elif input_control is GNToggleSet:
             if not input_control.members_changed.is_connected(on_value_changed):
                 input_control.members_changed.connect(on_value_changed.bind(setting_name))
@@ -39,6 +42,8 @@ func add_watched_setting(setting_name: String, input_control: Control, setting_g
         input_control.val_changed.connect(on_value_changed.bind(setting_name))
     elif input_control is GNExclusiveEnumEdit:
         input_control.option_changed.connect(on_value_changed.bind(setting_name))
+    elif input_control is Range:
+        input_control.value_changed.connect(on_value_changed.bind(setting_name))
     elif input_control is GNToggleSet:
         input_control.members_changed.connect(on_value_changed.bind(setting_name))
     elif input_control is LineEdit:
@@ -72,6 +77,11 @@ func update_from_asset_node() -> void:
             input_control.set_value_directly(float(asset_node.settings[setting_name]))
         elif input_control is GNExclusiveEnumEdit:
             input_control.set_current_option_directly(asset_node.settings[setting_name])
+        elif input_control is Range:
+            if input_control.has_method("set_value_directly"):
+                input_control.set_value_directly(float(asset_node.settings[setting_name]))
+            else:
+                input_control.set_value_no_signal(float(asset_node.settings[setting_name]))
         elif input_control is GNToggleSet:
             input_control.set_members_directly(asset_node.settings[setting_name])
         elif input_control is LineEdit:

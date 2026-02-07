@@ -57,6 +57,35 @@ func _draw_port(_slot_index: int, port_pos: Vector2i, _left: bool, color: Color)
 func set_node_type_schema(schema: Dictionary) -> void:
     node_type_schema = schema
 
+func update_slot_types(type_id_lookup: Dictionary[String, int]) -> void:
+    if not node_type_schema:
+        return
+    if not node_type_schema.get("no_output", false):
+        if not is_slot_enabled_left(0):
+            prints("Uh oh, output slot 0 is not enabled")
+        set_slot_type_left(0, type_id_lookup[node_type_schema.get("output_value_type", "")])
+
+    var conn_names: Array = node_type_schema.get("connections", {}).keys()
+    for conn_idx in conn_names.size():
+        var conn_slot: int = get_output_port_slot(conn_idx)
+        if not is_slot_enabled_right(conn_slot):
+            prints("Uh oh, connection %s (slot %d) is not enabled" % [conn_idx, conn_slot])
+        var conn_value_type: String = node_type_schema["connections"][conn_names[conn_idx]].get("value_type", "")
+        if conn_value_type:
+            set_connection_port_type(conn_idx, type_id_lookup[conn_value_type])
+
+func get_current_connection_list() -> Array[String]:
+    if not node_type_schema:
+        return []
+    return Array(node_type_schema.get("connections", {}).keys(), TYPE_STRING, "", null)
+
+func get_current_connection_value_types() -> Array[String]:
+    var conn_names: Array = get_current_connection_list()
+    var conn_value_types: Array[String] = []
+    for conn_name in conn_names:
+        conn_value_types.append(node_type_schema["connections"][conn_name].get("value_type", ""))
+    return conn_value_types
+
 func update_port_colors() -> void:
     if is_slot_enabled_left(0):
         var output_color: Color = TypeColors.get_actual_color_for_type(theme_color_output_type)
@@ -65,14 +94,19 @@ func update_port_colors() -> void:
     var slot_control_nodes: Array[Control] = get_slot_control_nodes()
 
     if node_type_schema:
-        var conn_names: Array = node_type_schema.get("connections", {}).keys()
-        for conn_idx in conn_names.size():
-            var conn_value_type: String = node_type_schema["connections"][conn_names[conn_idx]].get("value_type", "")
-            var conn_color: Color = TypeColors.get_actual_color_for_type(conn_value_type)
-            set_slot_color_right(conn_idx, conn_color)
+        var conn_value_types: Array[String] = get_current_connection_value_types()
+        for conn_idx in conn_value_types.size():
+            var conn_color: Color = TypeColors.get_actual_color_for_type(conn_value_types[conn_idx])
+            set_connection_port_color(conn_idx, conn_color)
             if conn_idx < slot_control_nodes.size() and slot_control_nodes[conn_idx] is Label:
-                slot_control_nodes[conn_idx].add_theme_color_override("font_color", TypeColors.get_label_color_for_type(conn_value_type))
-                slot_control_nodes[conn_idx].add_theme_stylebox_override("normal", TypeColors.get_label_stylebox_for_type(conn_value_type))
+                slot_control_nodes[conn_idx].add_theme_color_override("font_color", TypeColors.get_label_color_for_type(conn_value_types[conn_idx]))
+                slot_control_nodes[conn_idx].add_theme_stylebox_override("normal", TypeColors.get_label_stylebox_for_type(conn_value_types[conn_idx]))
+
+func set_connection_port_color(conn_idx: int, to_color: Color) -> void:
+    set_slot_color_right(get_output_port_slot(conn_idx), to_color)
+
+func set_connection_port_type(conn_idx: int, to_graph_type: int) -> void:
+    set_slot_type_right(get_output_port_slot(conn_idx), to_graph_type)
 
 func get_slot_control_nodes() -> Array[Control]:
     var slot_control_nodes: Array[Control] = []
