@@ -194,43 +194,6 @@ corner_radius_bottom_right = 3
 corner_radius_bottom_left = 3
 corner_detail = 5
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_ok6jj"]
-content_margin_left = 0.0
-content_margin_top = 0.0
-content_margin_right = 0.0
-content_margin_bottom = 0.0
-bg_color = Color(0.65, 0.65, 0.65, 0.2)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.65, 0.65, 0.65, 0.45)
-corner_detail = 1
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_facbu"]
-content_margin_left = 0.0
-content_margin_top = 0.0
-content_margin_right = 0.0
-content_margin_bottom = 0.0
-bg_color = Color(1, 1, 1, 1)
-corner_radius_top_left = 2
-corner_radius_top_right = 2
-corner_radius_bottom_right = 2
-corner_radius_bottom_left = 2
-corner_detail = 3
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_b1qrp"]
-content_margin_left = 0.0
-content_margin_top = 0.0
-content_margin_right = 0.0
-content_margin_bottom = 0.0
-bg_color = Color(0.6715141, 0.67151415, 0.6715141, 1)
-corner_radius_top_left = 3
-corner_radius_top_right = 3
-corner_radius_bottom_right = 3
-corner_radius_bottom_left = 3
-corner_detail = 5
-
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_h8e4i"]
 content_margin_left = 18.0
 content_margin_top = 12.0
@@ -465,9 +428,6 @@ GraphEdit/styles/menu_panel = SubResource("StyleBoxFlat_jq2sk")
 GraphEdit/styles/panel = SubResource("StyleBoxFlat_4k2k6")
 GraphEdit/styles/panel_focus = SubResource("StyleBoxFlat_1bvp3")
 GraphEditMinimap/colors/resizer_color = Color(1, 1, 1, 0.85)
-GraphEditMinimap/styles/camera = SubResource("StyleBoxFlat_ok6jj")
-GraphEditMinimap/styles/node = SubResource("StyleBoxFlat_facbu")
-GraphEditMinimap/styles/panel = SubResource("StyleBoxFlat_b1qrp")
 GraphFrame/colors/resizer_color = Color(0.875, 0.875, 0.875, 1)
 GraphFrame/styles/panel = SubResource("StyleBoxFlat_h8e4i")
 GraphFrame/styles/panel_selected = SubResource("StyleBoxFlat_4lmeg")

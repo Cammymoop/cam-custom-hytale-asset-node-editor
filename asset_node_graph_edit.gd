@@ -233,14 +233,16 @@ func _process(_delta: float) -> void:
 
     if Input.is_action_just_pressed("open_file_shortcut"):
         dialog_handler.show_open_file_dialog()
-    if Input.is_action_just_pressed("save_file_shortcut"):
+    elif Input.is_action_just_pressed("save_file_shortcut"):
         if has_saved_to_cur_file:
             save_to_json_file(cur_file_path + "/" + cur_file_name)
             unedited = true
         else:
             dialog_handler.show_save_file_dialog(cur_file_name != "")
-    if Input.is_action_just_pressed("save_as_shortcut"):
+    elif Input.is_action_just_pressed("save_as_shortcut"):
         dialog_handler.show_save_file_dialog(false)
+    elif Input.is_action_just_pressed("new_file_shortcut"):
+        popup_menu_root.show_new_file_type_chooser()
 
     if Input.is_action_just_pressed(&"graph_select_all_nodes"):
         select_all()
@@ -267,7 +269,9 @@ func _process(_delta: float) -> void:
             %ToastMessageContainer.show_toast_message("Nothing to Undo")
 
     if Input.is_action_just_pressed("show_new_node_menu"):
-        if not new_node_menu.visible:
+        if not loaded:
+            popup_menu_root.show_new_file_type_chooser()
+        elif not new_node_menu.visible:
             clear_next_drop()
             new_node_menu.open_all_menu()
     
@@ -401,6 +405,7 @@ func _add_connection(from_gn_name: StringName, from_port: int, to_gn_name: Strin
     var to_an: HyAssetNode = an_lookup.get(to_gn.get_meta("hy_asset_node_id", ""))
     
     
+    print("Adding connection from %s to %s" % [from_gn_name, to_gn_name])
     var existing_output_conn_infos: = raw_out_connections(to_gn)
     for existing_output in existing_output_conn_infos:
         remove_connection(existing_output, false)
@@ -2235,7 +2240,12 @@ func new_graph_node_name(base_name: String) -> String:
     return "%s--%d" % [base_name, global_gn_counter]
 
 func raw_connections(graph_node: CustomGraphNode) -> Array[Dictionary]:
-    assert(is_same(graph_node.get_parent(), self), "raw_connections: Graph node is not a direct child of the graph edit")
+    assert(is_same(graph_node.get_parent(), self), "raw_connections: Graph node %s is not a direct child of the graph edit" % graph_node.name)
+
+    # Workaround to avoid erronious error from trying to get connection list of nodes whose connections have never been touched yet
+    # this triggers the connection_map having an entry for this node name
+    is_node_connected(graph_node.name, 0, graph_node.name, 0)
+
     return get_connection_list_from_node(graph_node.name)
 
 func raw_out_connections(graph_node: CustomGraphNode) -> Array[Dictionary]:
