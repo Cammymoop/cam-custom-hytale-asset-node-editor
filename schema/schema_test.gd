@@ -49,18 +49,18 @@ func validate_value_types_complete():
 				if not schema.value_types.has(value_type):
 					add_error("Value type '%s' referenced in node '%s' connection '%s' but not in value_types array" % [value_type, node_name, conn_name])
 
+## Check that output_value_type matches the inferred type from connection_type_node_type_lookup
 func validate_output_value_types():
-	"""Check that output_value_type matches the inferred type from node_types"""
-	for type_key in schema.node_types:
+	for type_key in schema.connection_type_node_type_lookup:
 		var parts = type_key.split("|")
 		if parts.size() != 2:
 			continue
 		
 		var expected_output = parts[0]
-		var node_name = schema.node_types[type_key]
+		var node_name = schema.connection_type_node_type_lookup[type_key]
 		
 		if not schema.node_schema.has(node_name):
-			add_error("Node '%s' in node_types but not in node_schema" % node_name)
+			add_error("Node '%s' in connection_type_node_type_lookup but not in node_schema" % node_name)
 			continue
 		
 		var node_def = schema.node_schema[node_name]
@@ -70,7 +70,7 @@ func validate_output_value_types():
 		
 		var actual_output = node_def["output_value_type"]
 		if actual_output != expected_output:
-			add_error("Node '%s' has output_value_type '%s' but node_types implies '%s'" % [node_name, actual_output, expected_output])
+			add_error("Node '%s' has output_value_type '%s' but connection_type_node_type_lookup implies '%s'" % [node_name, actual_output, expected_output])
 
 ## Check that workspace_root_types reference valid node types
 func validate_workspace_root_types():

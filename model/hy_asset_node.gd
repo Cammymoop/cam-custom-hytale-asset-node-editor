@@ -305,7 +305,7 @@ func serialize_me(schema: AssetNodesSchema, gn_lookup: Dictionary[String, GraphN
                     serialized_data[conn_name] = get_connected_node(conn_name, 0).serialize_me(schema, gn_lookup, included_asset_nodes)
     else:
         var node_schema: = schema.node_schema[an_type]
-        var serialized_type_key: Variant = schema.node_types.find_key(an_type)
+        var serialized_type_key: Variant = schema.connection_type_node_type_lookup.find_key(an_type)
         if serialized_type_key and serialized_type_key.split("|", false).size() > 1:
             serialized_data["Type"] = serialized_type_key.split("|")[1]
 

@@ -42,7 +42,7 @@ func resolve_root_asset_node_type(workspace_id: String, node_data: Dictionary) -
         var type_key: = "%s|%s" % [expected_output_type, node_type_value]
 
         var resolved_type: = "Unknown"
-        if not type_key in node_types:
+        if not type_key in connection_type_node_type_lookup:
             push_warning("resolve root asset node type: Root node has incorrect output type (%s) for workspace ID: %s" % [expected_output_type, workspace_id])
             # TODO surface warnings to user
             if node_data.get("$NodeId", ""):
@@ -51,7 +51,7 @@ func resolve_root_asset_node_type(workspace_id: String, node_data: Dictionary) -
                 push_warning("resolve root asset node type: Output value mismatch and no node ID provided, unable to infer type")
                 return "Unknown"
         else:
-            resolved_type = node_types[type_key]
+            resolved_type = connection_type_node_type_lookup[type_key]
 
         return resolved_type
     else:
@@ -84,10 +84,10 @@ func resolve_asset_node_type(type_key: String, output_value_type: String, node_i
         if type_key == "NO_TYPE_KEY":
             type_key = ""
         var type_inference_key: = "%s|%s" % [output_value_type, type_key]
-        if not node_types.has(type_inference_key):
+        if not connection_type_node_type_lookup.has(type_inference_key):
             print_debug("Type inference key not found: %s" % type_inference_key)
             return "Unknown"
-        return node_types[type_inference_key]
+        return connection_type_node_type_lookup[type_inference_key]
 
 ## Needed for floating node roots in the current format
 func _unknown_output_type_inference(node_id: String) -> String:
@@ -132,10 +132,10 @@ func get_value_set_values(value_set: String) -> Array:
 @export var value_types: Array[String] = [
     "Density",
     "Curve",
-    "CurvePoint",
     "Positions",
-    "Material",
+    "CurvePoint",
     "MaterialProvider",
+    "Material",
     "VectorProvider",
     "Terrain",
     "Pattern",
@@ -161,7 +161,6 @@ func get_value_set_values(value_set: String) -> Array:
     "Condition",
     "Layer",
     "WeightedPath",
-    "WeightedProp",
     "SMDelimiterAssignments",
     "FFDelimiterAssignments",
     "DelimiterPattern",
@@ -183,7 +182,7 @@ func get_value_set_values(value_set: String) -> Array:
     "PCNDistanceFunction",
 ]
 
-@export var node_types: Dictionary[String, String] = {
+@export var connection_type_node_type_lookup: Dictionary[String, String] = {
     # Density nodes
     "Density|Constant": "ConstantDensity",
     "Density|Sum": "SumDensity",
@@ -2753,4 +2752,34 @@ func get_value_set_values(value_set: String) -> Array:
             "CanReplace": { "value_type": "BlockSet", "multi": false },
         }
     },
+}
+
+@export var alt_search_text: Dictionary[String, String] = {
+    "SumDensity": "add,plus",
+    "SumCurve": "add,plus",
+    "MultiplierDensity": "multiply,times,mask",
+    "MultiplierCurve": "multiply,times",
+    "NormalizerDensity": "remap",
+
+    "MaxCurve": "maximum",
+    "SmoothMaxCurve": "maximum",
+    "FloorCurve": "maximum",
+    "SmoothFloorCurve": "maximum",
+    "MinCurve": "minimum",
+    "SmoothMinCurve": "minimum",
+    "CeilingCurve": "minimum",
+    "SmoothCeilingCurve": "minimum",
+
+    "InverterCurve": "invert,inverse",
+    "NotCurve": "invert,inverse",
+
+    "FieldFunctionMaterialProvider": "density",
+    "FieldFunctionPositions": "density",
+    "FieldFunctionPattern": "density",
+    "FieldFunctionAssignments": "density",
+
+    "Mesh2DPositions": "grid",
+    "Mesh3DPositions": "grid",
+
+    "Runtime": "prop,assignments",
 }

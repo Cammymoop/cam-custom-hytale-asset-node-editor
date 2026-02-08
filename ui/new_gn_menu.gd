@@ -11,6 +11,8 @@ signal closing
 @export var graph_edit: AssetNodeGraphEdit
 var schema: AssetNodesSchema
 
+@export var scroll_to_margin: float = 12
+
 @export var scroll_min_height: = 100
 @export var scroll_max_height_ratio: = 0.85
 var scroll_max_height: = 0
@@ -18,8 +20,10 @@ var scroll_max_height: = 0
 @export_tool_button("Show Preview Content", "Tree") var show_prev: = rebuild_preview_tree
 
 @onready var scroll_container: ScrollContainer = find_child("ScrollContainer")
+@onready var scroll_bar: VScrollBar = scroll_container.get_v_scroll_bar()
 @onready var node_list_tree: Tree = scroll_container.get_node("Tree")
 @onready var show_all_btn: Button = find_child("ShowAllButton")
+@onready var filter_input: CustomLineEdit = find_child("FilterInput")
 
 var cur_filter_is_output: bool = true
 var cur_filter_is_neither: bool = false
@@ -31,6 +35,8 @@ var an_input_types: Dictionary[String, Array] = {}
 
 var filter_set_single_type: String = ""
 var filter_set_single: bool = false
+
+var has_search_filter: bool = false
 
 var test_filters: Array = [
     true, "Density",
@@ -46,6 +52,8 @@ var test_filter_idx: int = -1
 
 var popup_menu_root: PopupMenuRoot = null
 
+var can_search_filter: bool = true
+
 func _ready() -> void:
     find_popup_menu_root(get_parent())
     show_all_btn.toggled.connect(on_show_all_btn_toggled)
@@ -55,6 +63,10 @@ func _ready() -> void:
     node_list_tree.resized.connect(on_tree_size_changed)
     node_list_tree.item_activated.connect(tree_item_chosen)
     node_list_tree.item_mouse_selected.connect(tree_item_mouse_selected)
+    
+    filter_input.gui_input.connect(on_filter_gui_input)
+    filter_input.text_changed.connect(on_filter_text_changed)
+    filter_input.text_submitted.connect(on_filter_text_submitted.unbind(1))
 
     if Engine.is_editor_hint():
         return
@@ -86,12 +98,6 @@ func _process(_delta: float) -> void:
     if Input.is_action_just_pressed("ui_cancel"):
         cancelled.emit()
         closing.emit()
-
-    if Input.is_action_just_pressed("_debug_next_filter") and OS.has_feature("debug"):
-        test_filter_idx += 1
-        if test_filter_idx >= floori(test_filters.size() / 2.):
-            test_filter_idx = 0
-        open_menu(test_filters[test_filter_idx * 2], test_filters[test_filter_idx * 2 + 1])
 
 func build_lookups() -> void:
     an_types_by_input_value_type.clear()
@@ -155,19 +161,35 @@ func show_all_items() -> void:
         for child_item in category_item.get_children():
             child_item.visible = true
 
+func apply_search_filter_all() -> Array[TreeItem]:
+    var visible_items: Array[TreeItem] = []
+    for category_parent in node_list_tree.get_root().get_children():
+        var visible_count: int = 0
+        for child_item in category_parent.get_children():
+            if child_item.get_meta("node_type") in NodeFuzzySearcher.search_results:
+                child_item.visible = true
+                visible_count += 1
+                visible_items.append(child_item)
+            else:
+                child_item.visible = false
+        category_parent.visible = visible_count > 0
+    return visible_items
+
 func set_filter_output(val_type: String) -> void:
+    print("set_filter_output", val_type)
     cur_filter_is_neither = false
     cur_filter_is_output = true
     cur_filter_value_type = val_type
-    _filter_update()
+    _type_filter_update()
 
 func set_filter_input(val_type: String) -> void:
+    print("set_filter_input", val_type)
     cur_filter_is_neither = false
     cur_filter_is_output = false
     cur_filter_value_type = val_type
-    _filter_update()
+    _type_filter_update()
 
-func _filter_update() -> void:
+func _type_filter_update() -> void:
     if cur_filter_is_neither:
         return
     if cur_filter_is_output:
@@ -186,6 +208,25 @@ func _filter_update_output() -> void:
             if category_count == 1:
                 filter_set_single = true
                 filter_set_single_type = category_item.get_child(0).get_meta("node_type", "") as String
+    if has_search_filter:
+        apply_search_filter()
+
+func apply_search_filter_output() -> Array[TreeItem]:
+    var visible_items: Array[TreeItem] = []
+    for category_item in node_list_tree.get_root().get_children():
+        if category_item.get_text(0) != cur_filter_value_type:
+            category_item.visible = false
+            continue
+        category_item.visible = true
+        category_item.collapsed = false
+        for child_item in category_item.get_children():
+            if child_item.get_meta("node_type", "") in NodeFuzzySearcher.search_results:
+                child_item.visible = true
+                visible_items.append(child_item)
+            else:
+                child_item.visible = false
+    return visible_items
+
 
 func _filter_update_input() -> void:
     filter_set_single = false
@@ -206,6 +247,22 @@ func _filter_update_input() -> void:
                 elif filter_set_single:
                     more_than_one = true
                     filter_set_single = false
+    if has_search_filter:
+        apply_search_filter()
+
+func apply_search_filter_input() -> Array[TreeItem]:
+    var visible_items: Array[TreeItem] = []
+    for category_item in node_list_tree.get_root().get_children():
+        var visible_count: int = 0
+        for child_item in category_item.get_children():
+            var item_node_type: = child_item.get_meta("node_type", "") as String
+            child_item.visible = cur_filter_value_type in an_input_types[item_node_type]
+            child_item.visible = child_item.visible and item_node_type in NodeFuzzySearcher.search_results
+            if child_item.visible:
+                visible_items.append(child_item)
+                visible_count += 1
+        category_item.visible = visible_count > 0
+    return visible_items
 
 func open_menu(for_left_connection: bool, connection_value_type: String) -> void:
     show_all_btn.set_pressed_no_signal(false)
@@ -219,38 +276,112 @@ func open_menu(for_left_connection: bool, connection_value_type: String) -> void
         node_type_picked.emit(filter_set_single_type)
         return
 
+    show_search_filter_input()
     visible = true
 
 func open_all_menu() -> void:
     cur_filter_is_neither = true
     cur_filter_value_type = ""
-    _filter_update()
     
     show_all_btn.set_pressed_no_signal(true)
     show_all_btn.disabled = true
     show_all_items()
+
+    show_search_filter_input()
     visible = true
 
+func show_search_filter_input() -> void:
+    clear_search_filter()
+    if not can_search_filter:
+        filter_input.visible = false
+        return
+
+    filter_input.visible = true
+    filter_input.grab_focus.call_deferred()
+
 func on_show_all_btn_toggled(is_show_all: bool) -> void:
-    if is_show_all:
+    if has_search_filter:
+        apply_search_filter(false)
+    else:
+        _apply_cur_type_filter(is_show_all)
+
+func _apply_cur_type_filter(show_all: bool) -> void:
+    if show_all:
         node_list_tree.scroll_vertical_enabled = true
         show_all_items()
         node_list_tree.scroll_vertical_enabled = false
     else:
-        _filter_update()
+        _type_filter_update()
+    
+func on_search_filter_changed() -> void:
+    apply_search_filter()
+
+func apply_search_filter(select_first_visible_result: bool = true) -> void:
+    # TODO order items by search ranking, probably need to get rid of categories and display a flat list instead
+    # instead I'm just going to use the result ranking to select the best match for now
+    if not has_search_filter:
+        _apply_cur_type_filter(show_all_btn.is_pressed())
+        return
+    
+    var visible_items: Array[TreeItem] = []
+    if cur_filter_is_neither or show_all_btn.is_pressed():
+        visible_items = apply_search_filter_all()
+    elif cur_filter_is_output:
+        visible_items = apply_search_filter_output()
+    else:
+        visible_items = apply_search_filter_input()
+    
+    if select_first_visible_result:
+        var visible_node_types: Array[StringName] = []
+        for visible_item in visible_items:
+            visible_node_types.append(visible_item.get_meta("node_type", ""))
+        for search_result_type in NodeFuzzySearcher.search_results:
+            var found_idx: int = visible_node_types.find(search_result_type)
+            if found_idx != -1:
+                select_and_scroll_to(visible_items[found_idx])
+                return
     
 
-func rebuild_preview_tree() -> void:
-    if not is_inside_tree():
+func select_first_result() -> void:
+    for category_parent in node_list_tree.get_root().get_children():
+        if not category_parent.visible:
+            prints("skipping invisible category", category_parent.get_text(0))
+            continue
+        for child_item in category_parent.get_children():
+            if not child_item.visible:
+                continue
+            if category_parent.collapsed:
+                category_parent.collapsed = false
+            select_and_scroll_to(child_item)
+            return
+    prints("no visible items found to select")
+
+func move_selection(delta: int) -> void:
+    var cur_selected: = node_list_tree.get_selected()
+    if not cur_selected:
+        prints("no current selected item, selecting first result")
+        select_first_result()
         return
-    scroll_container = find_child("ScrollContainer")
-    node_list_tree = scroll_container.get_node("Tree")
-    if not schema:
-        schema = SchemaManager.schema
-    if not an_types_by_input_value_type:
-        build_lookups()
-    build_node_list()
-    set_filter_input("Material")
+    var next_visible_item: TreeItem = find_next_visible_item(cur_selected, delta)
+    if not next_visible_item:
+        return
+    select_and_scroll_to(next_visible_item)
+    node_list_tree.queue_redraw()
+
+## Skip non-selectable items
+func find_next_visible_item(cur_item: TreeItem, delta: int) -> TreeItem:
+    prints("finding next visible item from", cur_item.get_text(0), "delta", delta)
+    var next_item: TreeItem = _find_next_visible_item(cur_item, delta)
+    while next_item and not next_item.is_selectable(0):
+        prints("item", next_item.get_text(0), "is not selectable, looking for next again")
+        next_item = _find_next_visible_item(next_item, delta)
+    return next_item
+
+func _find_next_visible_item(cur_item: TreeItem, delta: int) -> TreeItem:
+    if delta > 0:
+        return cur_item.get_next_visible()
+    else:
+        return cur_item.get_prev_visible()
 
 func on_tree_size_changed() -> void:
     scroll_container.custom_minimum_size.y = clampi(int(node_list_tree.size.y), scroll_min_height, scroll_max_height)
@@ -278,4 +409,82 @@ func choose_item(tree_item: TreeItem) -> void:
 
     node_type_picked.emit(tree_item.get_meta("node_type"))
     closing.emit()
-    
+
+func select_and_scroll_to(tree_item: TreeItem) -> void:
+    print("selecting and scrolling to", tree_item.get_text(0))
+    var category_parent: TreeItem = tree_item.get_parent()
+    if category_parent and category_parent.collapsed:
+        category_parent.collapsed = false
+    node_list_tree.set_selected(tree_item, 0)
+
+    await get_tree().process_frame
+    prints("scrolling", get_scroll_view_rect(), scroll_bar.value, scroll_bar.page, node_list_tree.get_item_area_rect(tree_item).get_center())
+    var list_pos: Vector2 = node_list_tree.get_item_area_rect(tree_item).get_center()
+    scroll_to_list_pos(list_pos)
+
+func on_filter_gui_input(event: InputEvent) -> void:
+    if event is InputEventKey:
+        key_gui_input(event)
+
+func key_gui_input(event: InputEventKey) -> void:
+    if Input.is_action_just_pressed_by_event("ui_up", event):
+        move_selection(-1)
+        get_viewport().set_input_as_handled()
+    elif Input.is_action_just_pressed_by_event("ui_down", event):
+        move_selection(1)
+        get_viewport().set_input_as_handled()
+
+func on_filter_text_changed(new_text: String) -> void:
+    if new_text:
+        NodeFuzzySearcher.search(new_text)
+    has_search_filter = new_text.length() > 0
+    on_search_filter_changed()
+
+func clear_search_filter() -> void:
+    has_search_filter = false
+    filter_input.text = ""
+
+func on_filter_text_submitted() -> void:
+    var selected_item: TreeItem = node_list_tree.get_selected()
+    if not selected_item:
+        return
+    choose_item(selected_item)
+
+
+## For Testing
+func rebuild_preview_tree() -> void:
+    if not is_inside_tree():
+        return
+    scroll_container = find_child("ScrollContainer")
+    node_list_tree = scroll_container.get_node("Tree")
+    if not schema:
+        schema = SchemaManager.schema
+    if not an_types_by_input_value_type:
+        build_lookups()
+    build_node_list()
+    set_filter_input("Material")
+
+func get_scroll_view_rect() -> Rect2:
+    var view_rect: = Rect2(Vector2.ZERO, scroll_container.size)
+    view_rect.position.y = scroll_bar.value
+    return view_rect
+
+func is_list_pos_visible(list_pos: Vector2, margin: float = -1) -> bool:
+    if margin < 0:
+        margin = scroll_to_margin
+    var view_rect: = get_scroll_view_rect().grow_individual(0, -margin, 0, -margin)
+    prints("in view check rect", view_rect, list_pos)
+    return view_rect.has_point(list_pos)
+
+func scroll_to_list_pos(list_pos: Vector2) -> void:
+    if is_list_pos_visible(list_pos):
+        return
+    var view_rect: = get_scroll_view_rect()
+    if list_pos.y > view_rect.end.y - scroll_to_margin:
+        var scroll_amt: = list_pos.y - (view_rect.end.y - scroll_to_margin)
+        prints("scrolling down", scroll_amt)
+        scroll_bar.value += scroll_amt
+    elif list_pos.y < view_rect.position.y + scroll_to_margin:
+        var scroll_amt: = view_rect.position.y + scroll_to_margin - list_pos.y
+        prints("scrolling up", scroll_amt)
+        scroll_bar.value -= scroll_amt

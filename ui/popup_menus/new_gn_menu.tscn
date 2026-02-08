@@ -114,9 +114,11 @@ modulate_color = Color(0.07715169, 0.19749302, 0.13582164, 1)
 
 [node name="NewGNMenu" type="PanelContainer" unique_id=342951991]
 custom_minimum_size = Vector2(360, 50)
+focus_mode = 2
 theme = ExtResource("1_jor2c")
 theme_type_variation = &"LightPanel"
 script = ExtResource("2_nfqjc")
+scroll_to_margin = null
 scroll_min_height = 40
 
 [node name="MarginContainer" type="MarginContainer" parent="." unique_id=216926222]
