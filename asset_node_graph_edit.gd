@@ -131,7 +131,11 @@ func _ready() -> void:
         new_node_menu.node_type_picked.connect(on_new_node_type_picked)
         new_node_menu.cancelled.connect(on_new_node_menu_cancelled)
     
+    focus_exited.connect(on_focus_exited)
+    
     popup_menu_root.new_file_type_chooser.file_type_chosen.connect(on_new_file_type_chosen)
+    popup_menu_root.popup_menu_opened.connect(on_popup_menu_opened)
+    popup_menu_root.popup_menu_all_closed.connect(on_popup_menu_all_closed)
     
     setup_menus()
 
@@ -200,6 +204,19 @@ func on_files_dropped(dragged_files: PackedStringArray) -> void:
         return
     var json_file_path: String = json_files[0]
     open_file_with_prompt(json_file_path)
+
+func on_focus_exited() -> void:
+    if connection_cut_active:
+        cancel_connection_cut()
+    mouse_panning = false
+
+func on_popup_menu_opened() -> void:
+    prints("popup menu opened, releasing focus", has_focus())
+    release_focus()
+
+func on_popup_menu_all_closed() -> void:
+    prints("popup menu all closed, grabbing focus", has_focus())
+    grab_focus()
 
 func on_new_file_type_chosen(workspace_id: String) -> void:
     new_file_with_prompt(workspace_id)
@@ -348,6 +365,8 @@ func _gui_input(event: InputEvent) -> void:
         if is_mouse_wheel_event(event):
             return
         handle_mouse_event(event as InputEventMouse)
+        return
+    prints("non-mouse gui event", event.get_class(), event.as_text())
     
     if Input.is_action_just_pressed_by_event("show_new_node_menu", event):
         if not loaded:
@@ -355,6 +374,7 @@ func _gui_input(event: InputEvent) -> void:
         elif not new_node_menu.visible:
             clear_next_drop()
             new_node_menu.open_all_menu()
+            get_viewport().set_input_as_handled()
 
     if Input.is_action_just_pressed_by_event("ui_redo", event):
         if undo_manager.has_redo():

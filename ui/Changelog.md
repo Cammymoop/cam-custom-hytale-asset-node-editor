@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.0
+### Visual curve editor!
+
 ## 0.2.2
 ### Improvements:
 - Spin-box type buttons for number range inputs

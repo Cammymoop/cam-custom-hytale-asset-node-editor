@@ -10,9 +10,11 @@ var value: float = 0.0
 var text_dirty: = false
 
 func _init() -> void:
+    super._init()
     alignment = HORIZONTAL_ALIGNMENT_RIGHT
 
 func _ready() -> void:
+    super._ready()
     focus_exited.connect(on_focus_out)
     text_submitted.connect(text_change_done.unbind(1))
     text_changed.connect(on_text_changed)
@@ -64,7 +66,6 @@ func get_value_from_expression(expr_text: String) -> void:
     if not result[0]:
         return
 
-    print_debug("Expression '%s' evaluated to %s" % [expr_text, result[1]])
     if is_int:
         value = int(result[1])
     else:
@@ -95,5 +96,4 @@ func redisplay_value() -> void:
     if is_equal_approx(rounded_val, int(rounded_val)):
         text = str(int(rounded_val))
     else:
-        prints("Rounded value is not an integer: %s != %s, (value: %s, int diff: %s)" % [rounded_val, int(rounded_val), value, rounded_val - int(rounded_val)])
         text = str(rounded_val)

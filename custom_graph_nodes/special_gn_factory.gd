@@ -47,11 +47,7 @@ func make_special_ManualCurve(target_asset_node: HyAssetNode, is_new: bool) -> C
     if not is_new:
         new_manual_curve_gn.load_points_from_an_connection()
     else:
-        for i in 2:
-            var new_curve_point_an: HyAssetNode = get_new_asset_node("CurvePoint")
-            new_curve_point_an.settings["In"] = float(i)
-            new_curve_point_an.settings["Out"] = float(i)
-            target_asset_node.append_node_to_connection("Points", new_curve_point_an)
+        new_manual_curve_gn.replace_points([Vector2(0, 1), Vector2(1, 0)])
         new_manual_curve_gn.load_points_from_an_connection()
 
     return new_manual_curve_gn as CustomGraphNode

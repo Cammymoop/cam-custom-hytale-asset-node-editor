@@ -129,6 +129,19 @@ func remove_node_from_connection(conn_name: String, asset_node: HyAssetNode) -> 
 
     remove_node_from_connection_at(conn_name, found_at_idx)
 
+func pop_node_from_connection(conn_name: String) -> HyAssetNode:
+    if not has_inner_asset_nodes:
+        print_debug("Trying to pop node from a shallow asset node (%s)" % an_node_id)
+        return null
+    if not connection_list.has(conn_name):
+        print_debug("Connection name %s not found in connection list" % conn_name)
+        return null
+    if connected_node_counts[conn_name] == 0:
+        return null
+    var popped_node: = get_connected_node(conn_name, connected_node_counts[conn_name] - 1)
+    remove_node_from_connection_at(conn_name, connected_node_counts[conn_name] - 1)
+    return popped_node
+
 func remove_node_from_connection_at(conn_name: String, at_index: int) -> void:
     if not has_inner_asset_nodes:
         print_debug("Trying to remove node from a shallow asset node (%s) at index %s" % [an_node_id, at_index])
@@ -136,8 +149,13 @@ func remove_node_from_connection_at(conn_name: String, at_index: int) -> void:
     if at_index < 0 or at_index >= connected_node_counts[conn_name]:
         print_debug("Index %s is out of range for connection %s" % [at_index, conn_name])
         return
+    
+    connected_asset_nodes.erase("%s:%d" % [conn_name, at_index])
+    if at_index == connected_node_counts[conn_name] - 1:
+        connected_node_counts[conn_name] -= 1
+    else:
+        _reindex_connection(conn_name)
 
-    remove_indices_from_connection(conn_name, [at_index])
 
 func insert_node_into_connection_at(conn_name: String, at_index: int, asset_node: HyAssetNode) -> void:
     if at_index < 0 or at_index > connected_node_counts[conn_name]:

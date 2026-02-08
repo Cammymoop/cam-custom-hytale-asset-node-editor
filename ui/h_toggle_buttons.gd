@@ -13,6 +13,15 @@ func _ready() -> void:
     if not allow_all_off:
         ensure_one_pressed()
 
+func set_text_pressed(text_val: String) -> void:
+    for b in buttons:
+        b.set_pressed_no_signal(false)
+    for i in buttons.size():
+        var b: = buttons[i]
+        if b.text.to_lower() == text_val.to_lower():
+            ensure_one_pressed(i)
+            break
+
 func ensure_one_pressed(repress_index: int = 0) -> void:
     var pressed_count: int = 0
     for b in buttons:

@@ -2,7 +2,7 @@ extends Node
 
 var settings_file_path: String = "user://CHANE_settings.json"
 
-@export var display_decimal_places: = 5
+@export var display_decimal_places: = 3
 @export var custom_display_scale: float = -1
 
 var detected_display_scale: float = 1.0

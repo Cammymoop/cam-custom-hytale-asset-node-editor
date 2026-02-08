@@ -15,8 +15,8 @@ func set_base_theme_type(new_base_theme_type: String) -> void:
 func _ready() -> void:
     theme_type_variation = base_theme_type_variation
 
-func on_editing_toggled(is_editing: bool) -> void:
-    if is_editing:
+func on_editing_toggled(now_is_editing: bool) -> void:
+    if now_is_editing:
         theme_type_variation = "LineEditEditing"
     else:
         theme_type_variation = base_theme_type_variation
