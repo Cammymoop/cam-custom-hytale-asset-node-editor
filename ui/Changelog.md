@@ -3,6 +3,9 @@
 ## 0.3.0
 ### Visual curve editor!
 
+### Fixes:
+- Fix Space menu not working until after left clicking the editor after closing a popup menu
+
 ## 0.2.2
 ### Improvements:
 - Spin-box type buttons for number range inputs
