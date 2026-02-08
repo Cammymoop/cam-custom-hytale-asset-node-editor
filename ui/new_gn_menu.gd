@@ -219,7 +219,7 @@ func open_menu(for_left_connection: bool, connection_value_type: String) -> void
         node_type_picked.emit(filter_set_single_type)
         return
 
-    popup_menu_root.show_new_gn_menu()
+    visible = true
 
 func open_all_menu() -> void:
     cur_filter_is_neither = true
@@ -229,7 +229,7 @@ func open_all_menu() -> void:
     show_all_btn.set_pressed_no_signal(true)
     show_all_btn.disabled = true
     show_all_items()
-    popup_menu_root.show_new_gn_menu()
+    visible = true
 
 func on_show_all_btn_toggled(is_show_all: bool) -> void:
     if is_show_all:

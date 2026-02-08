@@ -2,7 +2,6 @@ extends PanelContainer
 
 signal closing
 
-@export var dialog_handler: DialogHandler
 @onready var prompt: Label = find_child("Prompt")
 
 @onready var save_btn: Button = find_child("SaveBtn")
@@ -12,7 +11,6 @@ signal closing
 var after_save_callback: Callable = Callable()
 
 func _ready() -> void:
-    assert(dialog_handler != null, "Save Confirm: Dialog handler is not set, please set it in the inspector")
     visibility_changed.connect(on_visibility_changed)
 
 func on_visibility_changed() -> void:
@@ -45,9 +43,9 @@ func on_ignore_save_chosen() -> void:
     closing.emit()
 
 func show_save_dialog(save_as_current: bool) -> void:
-    dialog_handler.show_save_file_dialog(save_as_current)
-    if not dialog_handler.requested_save_file.is_connected(current_was_saved):
-        dialog_handler.requested_save_file.connect(current_was_saved.unbind(1), CONNECT_ONE_SHOT)
+    FileDialogHandler.show_save_file_dialog(save_as_current)
+    if not FileDialogHandler.requested_save_file.is_connected(current_was_saved):
+        FileDialogHandler.requested_save_file.connect(current_was_saved.unbind(1), CONNECT_ONE_SHOT)
 
 func current_was_saved() -> void:
     var graph_edit: AssetNodeGraphEdit = get_tree().current_scene.find_child("AssetNodeGraphEdit")

@@ -1,0 +1,86 @@
+[gd_scene format=3 uid="uid://d0lsk14qu5fi4"]
+
+[ext_resource type="Script" uid="uid://bbhpphioejxw1" path="res://ui/new_file_type_chooser.gd" id="1_fataj"]
+[ext_resource type="Theme" uid="uid://cavvrgn7xx6ho" path="res://ui/grey_theme.tres" id="2_pcht5"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_2cqfq"]
+bg_color = Color(0.32915878, 0.32915822, 0.3291585, 1)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_yaehf"]
+bg_color = Color(0.7835238, 0.78352326, 0.7835235, 1)
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[node name="NewFileTypeChooser" type="PanelContainer" unique_id=944013177]
+visible = false
+custom_minimum_size = Vector2(340, 0)
+theme_override_styles/panel = SubResource("StyleBoxFlat_2cqfq")
+script = ExtResource("1_fataj")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="." unique_id=1610376478]
+layout_mode = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="VBoxContainer" unique_id=315878426]
+layout_mode = 2
+theme_override_constants/margin_bottom = 0
+
+[node name="Label" type="Label" parent="VBoxContainer/MarginContainer" unique_id=1361168598]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "New File"
+horizontal_alignment = 1
+
+[node name="PanelContainer" type="PanelContainer" parent="VBoxContainer" unique_id=842512791]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_yaehf")
+
+[node name="MarginContainer" type="MarginContainer" parent="VBoxContainer/PanelContainer" unique_id=2120316143]
+layout_mode = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="VBoxContainer/PanelContainer/MarginContainer" unique_id=842230318]
+layout_mode = 2
+theme = ExtResource("2_pcht5")
+
+[node name="ButtonContainer" type="VBoxContainer" parent="VBoxContainer/PanelContainer/MarginContainer/VBoxContainer" unique_id=406271894]
+layout_mode = 2
+
+[node name="Button" type="Button" parent="VBoxContainer/PanelContainer/MarginContainer/VBoxContainer/ButtonContainer" unique_id=1618665656]
+layout_mode = 2
+size_flags_horizontal = 4
+text = "HytaleGenerator - Biome"
+
+[node name="Spacer" type="Control" parent="VBoxContainer/PanelContainer/MarginContainer/VBoxContainer" unique_id=1695614590]
+custom_minimum_size = Vector2(0, 10)
+layout_mode = 2
+
+[node name="HBoxContainer" type="HBoxContainer" parent="VBoxContainer/PanelContainer/MarginContainer/VBoxContainer" unique_id=1157098320]
+layout_mode = 2
+
+[node name="Spacer" type="Control" parent="VBoxContainer/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer" unique_id=153523025]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="NewFileOpenButton" type="Button" parent="VBoxContainer/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer" unique_id=910117556]
+layout_mode = 2
+size_flags_horizontal = 4
+text = "Open File"
+
+[node name="Spacer2" type="Control" parent="VBoxContainer/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer" unique_id=408479835]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="CancelBtn" type="Button" parent="VBoxContainer/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer" unique_id=1714703184]
+layout_mode = 2
+size_flags_horizontal = 4
+text = "Cancel"
+
+[node name="Spacer3" type="Control" parent="VBoxContainer/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer" unique_id=619519370]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[connection signal="pressed" from="VBoxContainer/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/NewFileOpenButton" to="." method="_on_open_button_pressed"]
+[connection signal="pressed" from="VBoxContainer/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/CancelBtn" to="." method="_on_cancel_btn_pressed"]

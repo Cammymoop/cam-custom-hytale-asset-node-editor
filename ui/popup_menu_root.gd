@@ -6,16 +6,25 @@ signal popup_menu_all_closed
 
 @export var focus_stop: Control
 @export var non_focus_stop: Control
-@export var new_gn_menu: Control
+@export var new_gn_menu: NewGNMenu
 @export var theme_editor_menu: Control
 @export var save_confirm: Control
 @export var new_file_type_chooser: Control
 
+@onready var all_menus: Array[Control] = [
+    new_gn_menu,
+    theme_editor_menu,
+    save_confirm,
+    new_file_type_chooser,
+]
+
+var new_gn_menu_filter_is_output: bool = true
+var new_gn_menu_filter_value_type: String = ""
+
 func _ready() -> void:
-    save_confirm.closing.connect(close_all)
-    new_file_type_chooser.closing.connect(close_all)
-    new_gn_menu.closing.connect(close_all)
-    theme_editor_menu.closing.connect(close_all)
+    for menu in all_menus:
+        if menu.has_signal("closing"):
+            menu.closing.connect(close_all)
     hide_all_menus()
 
 func show_theme_editor() -> void:
@@ -40,10 +49,18 @@ func show_new_file_type_chooser() -> void:
     new_file_type_chooser.show()
     after_menu_shown()
 
-func show_new_gn_menu() -> void:
+func show_filtered_new_gn_menu(is_filter_output: bool, filter_value_type: String) -> void:
+    new_gn_menu_filter_is_output = is_filter_output
+    new_gn_menu_filter_value_type = filter_value_type
+    show_new_gn_menu(false)
+
+func show_new_gn_menu(unfiltered: bool = true) -> void:
     hide_all_menus()
     non_focus_stop.show()
-    new_gn_menu.show()
+    if unfiltered:
+        new_gn_menu.open_all_menu()
+    else:
+        new_gn_menu.open_menu(new_gn_menu_filter_is_output, new_gn_menu_filter_value_type)
     after_menu_shown()
 
 func is_menu_visible() -> bool:
@@ -56,10 +73,8 @@ func close_all() -> void:
 func hide_all_menus() -> void:
     focus_stop.hide()
     non_focus_stop.hide()
-    new_gn_menu.hide()
-    theme_editor_menu.hide()
-    save_confirm.hide()
-    new_file_type_chooser.hide()
+    for menu in all_menus:
+        menu.hide()
 
 func after_menu_shown() -> void:
     popup_menu_opened.emit()

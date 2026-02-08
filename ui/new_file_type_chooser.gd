@@ -33,3 +33,7 @@ func choose_type_btn_pressed(workspace_id: String) -> void:
 
 func _on_cancel_btn_pressed() -> void:
     closing.emit()
+
+func _on_open_button_pressed() -> void:
+    FileDialogHandler.show_open_file_dialog()
+    closing.emit()

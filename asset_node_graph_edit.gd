@@ -7,8 +7,6 @@ signal zoom_changed(new_zoom: float)
 @export var save_formatted_json: = true
 @export_file_path("*.json") var test_json_file: String = ""
 
-@export var new_node_menu: NewGNMenu
-
 var parsed_json_data: Dictionary = {}
 var parsed_has_no_positions: = false
 var loaded: = false
@@ -29,7 +27,6 @@ var root_node: HyAssetNode = null
 
 @export var popup_menu_root: PopupMenuRoot
 @onready var special_gn_factory: SpecialGNFactory = $SpecialGNFactory
-@onready var dialog_handler: DialogHandler = get_parent().get_node("DialogHandler")
 
 var asset_node_meta: Dictionary[String, Dictionary] = {}
 var all_meta: Dictionary = {}
@@ -124,18 +121,17 @@ func get_version_number_string() -> String:
 func _ready() -> void:
     get_window().files_dropped.connect(on_files_dropped)
     assert(popup_menu_root != null, "Popup menu root is not set, please set it in the inspector")
-    if not new_node_menu:
-        push_warning("New node menu is not set, please set it in the inspector")
-        print_debug("New node menu is not set, please set it in the inspector")
-    else:
-        new_node_menu.node_type_picked.connect(on_new_node_type_picked)
-        new_node_menu.cancelled.connect(on_new_node_menu_cancelled)
+    popup_menu_root.new_gn_menu.node_type_picked.connect(on_new_node_type_picked)
+    popup_menu_root.new_gn_menu.cancelled.connect(on_new_node_menu_cancelled)
     
     focus_exited.connect(on_focus_exited)
     
     popup_menu_root.new_file_type_chooser.file_type_chosen.connect(on_new_file_type_chosen)
     popup_menu_root.popup_menu_opened.connect(on_popup_menu_opened)
     popup_menu_root.popup_menu_all_closed.connect(on_popup_menu_all_closed)
+    
+    FileDialogHandler.requested_open_file.connect(_on_requested_open_file)
+    FileDialogHandler.requested_save_file.connect(_on_requested_save_file)
     
     setup_menus()
 
@@ -244,7 +240,7 @@ func load_file_real(json_file_path: String) -> void:
     cur_file_name = json_file_path.get_file()
     cur_file_path = json_file_path.get_base_dir()
     has_saved_to_cur_file = false
-    dialog_handler.last_file_dialog_directory = json_file_path.get_base_dir()
+    FileDialogHandler.last_file_dialog_directory = json_file_path.get_base_dir()
     load_json_file(json_file_path)
 
 func _process(_delta: float) -> void:
@@ -252,15 +248,15 @@ func _process(_delta: float) -> void:
         return
 
     if Input.is_action_just_pressed("open_file_shortcut"):
-        dialog_handler.show_open_file_dialog()
+        FileDialogHandler.show_open_file_dialog()
     elif Input.is_action_just_pressed("save_file_shortcut"):
         if has_saved_to_cur_file:
             save_to_json_file(cur_file_path + "/" + cur_file_name)
             unedited = true
         else:
-            dialog_handler.show_save_file_dialog(cur_file_name != "")
+            FileDialogHandler.show_save_file_dialog(cur_file_name != "")
     elif Input.is_action_just_pressed("save_as_shortcut"):
-        dialog_handler.show_save_file_dialog(false)
+        FileDialogHandler.show_save_file_dialog(false)
     elif Input.is_action_just_pressed("new_file_shortcut"):
         popup_menu_root.show_new_file_type_chooser()
 
@@ -296,15 +292,15 @@ func on_file_menu_id_pressed(id: int) -> void:
     var menu_item_text: = file_menu_menu.get_item_text(file_menu_menu.get_item_index(id))
     match menu_item_text:
         "Open":
-            dialog_handler.show_open_file_dialog()
+            FileDialogHandler.show_open_file_dialog()
         "Save":
             if has_saved_to_cur_file:
                 save_to_json_file(cur_file_path + "/" + cur_file_name)
                 unedited = true
             else:
-                dialog_handler.show_save_file_dialog(cur_file_name != "")
+                FileDialogHandler.show_save_file_dialog(cur_file_name != "")
         "Save As ...":
-            dialog_handler.show_save_file_dialog(false)
+            FileDialogHandler.show_save_file_dialog(false)
         "New":
             popup_menu_root.show_new_file_type_chooser()
 
@@ -324,7 +320,7 @@ func on_settings_menu_index_pressed(index: int) -> void:
 
 func setup_new_graph(workspace_id: String = DEFAULT_HY_WORKSPACE_ID) -> void:
     cur_file_name = ""
-    cur_file_path = dialog_handler.last_file_dialog_directory
+    cur_file_path = FileDialogHandler.last_file_dialog_directory
     has_saved_to_cur_file = false
     clear_graph()
     hy_workspace_id = workspace_id
@@ -366,14 +362,13 @@ func _gui_input(event: InputEvent) -> void:
             return
         handle_mouse_event(event as InputEventMouse)
         return
-    prints("non-mouse gui event", event.get_class(), event.as_text())
     
     if Input.is_action_just_pressed_by_event("show_new_node_menu", event):
         if not loaded:
             popup_menu_root.show_new_file_type_chooser()
-        elif not new_node_menu.visible:
+        elif not popup_menu_root.is_menu_visible():
             clear_next_drop()
-            new_node_menu.open_all_menu()
+            popup_menu_root.show_new_gn_menu()
             get_viewport().set_input_as_handled()
 
     if Input.is_action_just_pressed_by_event("ui_redo", event):
@@ -381,7 +376,7 @@ func _gui_input(event: InputEvent) -> void:
             print("Redoing")
             undo_manager.redo()
         else:
-            %ToastMessageContainer.show_toast_message("Nothing to Redo")
+            GlobalToaster.show_toast_message("Nothing to Redo")
     # NOTE we do need this to be elif, because pressing ctr+shift+z registers as a ctr+z action being pressed too
     elif Input.is_action_just_pressed_by_event("ui_undo", event):
         if undo_manager.has_undo():
@@ -602,7 +597,7 @@ func _connect_right_request(from_gn_name: StringName, from_port: int, dropped_po
     if from_an:
         var from_node_schema: Dictionary = SchemaManager.schema.node_schema[from_an.an_type]
         next_drop_conn_value_type = from_node_schema["connections"][from_an.connection_list[from_port]].get("value_type", "")
-        new_node_menu.open_menu(true, next_drop_conn_value_type)
+        popup_menu_root.show_filtered_new_gn_menu(true, next_drop_conn_value_type)
     else:
         print_debug("Connect right request: From asset node not found")
 
@@ -616,7 +611,7 @@ func _connect_left_request(to_gn_name: StringName, to_port: int, dropped_pos: Ve
     if to_an:
         var to_node_schema: Dictionary = SchemaManager.schema.node_schema[to_an.an_type]
         next_drop_conn_value_type = to_node_schema["output_value_type"]
-        new_node_menu.open_menu(false, next_drop_conn_value_type)
+        popup_menu_root.show_filtered_new_gn_menu(false, next_drop_conn_value_type)
     else:
         print_debug("Connect left request: To asset node not found")
 
@@ -1667,9 +1662,9 @@ func handle_mouse_event(event: InputEventMouse) -> void:
     var mouse_motion_event: = event as InputEventMouseMotion
     
     if mouse_btn_event:
-        if new_node_menu.visible and mouse_btn_event.is_pressed():
+        if popup_menu_root.new_gn_menu.visible and mouse_btn_event.is_pressed():
             prints("Hiding new node menu because of mouse button: %s" % mouse_btn_event.button_index)
-            new_node_menu.hide()
+            popup_menu_root.close_all()
             if mouse_btn_event.button_index == MOUSE_BUTTON_LEFT:
                 return
 
@@ -1746,7 +1741,7 @@ func load_json(json_data: String) -> void:
     print("")
     
 
-func _requested_open_file(path: String) -> void:
+func _on_requested_open_file(path: String) -> void:
     open_file_with_prompt(path)
 
 func on_begin_node_move() -> void:
@@ -1958,7 +1953,7 @@ func _undo_redo_remove_gn(the_graph_node: GraphNode) -> void:
     remove_child(the_graph_node)
 
 
-func on_requested_save_file(file_path: String) -> void:
+func _on_requested_save_file(file_path: String) -> void:
     await get_tree().process_frame
     cur_file_name = file_path.get_file()
     cur_file_path = file_path.get_base_dir()

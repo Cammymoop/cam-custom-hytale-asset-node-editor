@@ -1,4 +1,5 @@
 extends Control
+class_name ToastMessageContainer
 
 @onready var toast_message_label: Label = find_child("ToastMessageLabel")
 @onready var toast_animator: AnimationPlayer = find_child("ToastAnimator")
