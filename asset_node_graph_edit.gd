@@ -438,7 +438,7 @@ func _add_connection(from_gn_name: StringName, from_port: int, to_gn_name: Strin
     
     var existing_output_conn_infos: = raw_out_connections(to_gn)
     for existing_output in existing_output_conn_infos:
-        remove_connection(existing_output, false)
+        remove_connection(existing_output)
     
     if not from_an or not to_an:
         print_debug("Warning: From or to asset node not found")
@@ -1004,7 +1004,10 @@ func check_for_asset_nodes(old_style: bool, val: Variant) -> Variant:
     elif val is Array:
         if val.size() == 0:
             return val
-        test_dict = val[0]
+        elif typeof(val[0]) == TYPE_DICTIONARY:
+            test_dict = val[0]
+        else:
+            return null
     elif val != null:
         return null
     
@@ -1498,14 +1501,9 @@ func new_graph_node(asset_node: HyAssetNode, newly_created: bool) -> CustomGraph
                     s_edit.text = str(setting_value)
                     s_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
                     s_name.size_flags_horizontal = Control.SIZE_FILL
-                    if ui_hint == "block_id":
-                        s_edit.custom_minimum_size.x = 140
-                    #if setting_type == TYPE_FLOAT or setting_type == TYPE_INT:
-                        #s_edit.alignment = HORIZONTAL_ALIGNMENT_RIGHT
 
                 # Special settings editors based on type and ui_hint etc
                 if ui_hint == "string_enum":
-                    prints("making exclusive enum edit for %s" % setting_name)
                     s_edit = preload("res://ui/data_editors/exclusive_enum.tscn").instantiate() as GNExclusiveEnumEdit
                     var value_set: String = node_schema["settings"][setting_name].get("value_set", "")
                     if not value_set:
@@ -1562,7 +1560,7 @@ func new_graph_node(asset_node: HyAssetNode, newly_created: bool) -> CustomGraph
                 elif ui_hint == "block_id":
                     s_edit.add_theme_constant_override("minimum_character_width", 14)
                 elif ui_hint:
-                    prints("UI hint %s for %s:%s has no handling" % [ui_hint, asset_node.an_type, setting_name])
+                    pass#prints("UI hint %s for %s:%s has no handling" % [ui_hint, asset_node.an_type, setting_name])
                 
 
                 s_edit.name = "SettingEdit_%s" % setting_name

@@ -1,0 +1,8 @@
+[gd_resource type="DPITexture" format=3 uid="uid://tjb2m0kgtvnl"]
+
+[resource]
+_source = "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'>
+	<path fill='none' stroke='white' stroke-linecap='round' stroke-linejoin='round' stroke-opacity='1' stroke-width='2' d='m3 4.5 10 0' />
+	<path fill='none' stroke='white' stroke-linecap='round' stroke-linejoin='round' stroke-opacity='1' stroke-width='2' d='m3 8.5 10 0' />
+	<path fill='none' stroke='white' stroke-linecap='round' stroke-linejoin='round' stroke-opacity='1' stroke-width='2' d='m3 12.5 10 0' />
+</svg>"

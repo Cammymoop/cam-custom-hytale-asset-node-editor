@@ -22,6 +22,8 @@ func set_numeric_options(new_options: Array, new_selected_option: int) -> void:
     options.clear()
     for opt in new_options:
         options.append(str(opt))
+    selected_text = str(new_selected_option)
+    update_options()
     set_current_option_directly(str(new_selected_option))
 
 func set_current_option_directly(new_option: String) -> void:
@@ -33,6 +35,7 @@ func set_current_option_directly(new_option: String) -> void:
         return
     
     select(index)
+    print_debug("selected option: %d %s" % [index, new_option])
 
 func select_option(new_option: String) -> void:
     set_current_option_directly(new_option)

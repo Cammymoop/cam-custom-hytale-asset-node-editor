@@ -39,3 +39,9 @@ func get_context_menu_pos(mouse_pos: Vector2i) -> Vector2i:
     if not window.gui_embed_subwindows:
         return mouse_pos + window.position
     return mouse_pos
+
+func is_ctrl_cmd_pressed() -> bool:
+    var ctrl_keycode: = KEY_CTRL
+    if OS.has_feature("macos"):
+        ctrl_keycode = KEY_META
+    return Input.is_key_pressed(ctrl_keycode)

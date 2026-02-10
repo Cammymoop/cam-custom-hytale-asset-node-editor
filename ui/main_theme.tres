@@ -170,6 +170,8 @@ content_margin_top = 4.0
 content_margin_right = 6.0
 content_margin_bottom = 4.0
 
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_lsmgg"]
+
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_jq2sk"]
 content_margin_left = 4.0
 content_margin_top = 2.0
@@ -348,7 +350,7 @@ Button/colors/font_outline_color = Color(0, 0, 0, 1)
 Button/colors/font_pressed_color = Color(0.04225994, 0.12375326, 0.073298074, 1)
 Button/colors/icon_disabled_color = Color(1, 1, 1, 0.4)
 Button/colors/icon_focus_color = Color(1, 1, 1, 1)
-Button/colors/icon_hover_color = Color(0.037789643, 0.075180836, 0.0478611, 1)
+Button/colors/icon_hover_color = Color(1, 1, 1, 1)
 Button/colors/icon_hover_pressed_color = Color(1, 1, 1, 1)
 Button/colors/icon_normal_color = Color(1, 1, 1, 1)
 Button/colors/icon_pressed_color = Color(1, 1, 1, 1)
@@ -409,6 +411,8 @@ CheckButton/styles/hover = SubResource("StyleBoxEmpty_0odxb")
 CheckButton/styles/hover_pressed = SubResource("StyleBoxEmpty_0odxb")
 CheckButton/styles/normal = SubResource("StyleBoxEmpty_0odxb")
 CheckButton/styles/pressed = SubResource("StyleBoxEmpty_0odxb")
+FlatMenuButton/colors/icon_hover_color = Color(1, 1, 1, 1)
+FlatMenuButton/styles/pressed = SubResource("StyleBoxEmpty_lsmgg")
 GraphEdit/colors/activity = Color(1, 1, 1, 1)
 GraphEdit/colors/connection_hover_tint_color = Color(0, 0, 0, 0.3)
 GraphEdit/colors/connection_rim_color = Color(0.1, 0.1, 0.1, 0.6)

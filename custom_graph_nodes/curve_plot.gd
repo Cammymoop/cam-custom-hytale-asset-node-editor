@@ -2,6 +2,7 @@ extends Control
 class_name CurvePlot
 
 signal delete_point(point_idx: int)
+signal points_adjusted(new_points: Array[Vector2])
 signal points_changed(new_points: Array[Vector2])
 
 
@@ -65,19 +66,21 @@ var can_drag_dist_squared: float = 4 * 4
 var dragging_point_idx: int = -1
 var dragging_mouse_offset: Vector2 = Vector2.ZERO
 
+@export var snapping_interval: float = 0.01
+
 @export var anim_region_duration: float = 0.167
 @export_exp_easing var anim_region_ease_param: = 0.4
 var animating_region: bool = false
 var anim_info: Dictionary = {}
 
 func _ready() -> void:
-    focus_mode = Control.FOCUS_CLICK
     visualizer_line = Line2D.new()
     visualizer_line.name = "VisualizerLine"
     visualizer_line.width = 1
     visualizer_line.default_color = line_color
     visualizer_line.z_index = 1
     add_child(visualizer_line, true)
+    resized.connect(update_size)
 
 func hiding() -> void:
     reset_dragging_state()
@@ -94,12 +97,6 @@ func start_animating_region() -> void:
 func stop_animating_region() -> void:
     animating_region = false
 
-func is_ctrl_pressed() -> bool:
-    var ctrl_keycode: = KEY_CTRL
-    if OS.has_feature("macos"):
-        ctrl_keycode = KEY_META
-    return Input.is_key_pressed(ctrl_keycode)
-
 func _process(delta: float) -> void:
     if not is_visible_in_tree():
         return
@@ -110,7 +107,7 @@ func _process(delta: float) -> void:
     elif get_global_rect().has_point(get_global_mouse_position()):
         new_default_cursor_shape = Control.CURSOR_ARROW
         var local_mouse_pos: = get_local_mouse_position()
-        if is_ctrl_pressed():
+        if Util.is_ctrl_cmd_pressed():
             new_default_cursor_shape = Control.CURSOR_CROSS
         else:
             for point_idx in point_position_cache.size():
@@ -126,26 +123,40 @@ func _process(delta: float) -> void:
     anim_info["time_left"] -= delta
     if anim_info["time_left"] <= 0:
         stop_animating_region()
-        update_curve(sorted_points, false)
-        queue_redraw()
+        refresh_curve()
     else:
-        update_curve(sorted_points, false, true)
+        refresh_curve(true)
+    update_point_pos_cache(get_domain_to_output())
     
 func set_as_manual_curve() -> void:
     is_curve_linear = true
     is_curve_points_editable = true
 
-func resort_points() -> void:
+func _sort_points(points: Array[Vector2]) -> Array[Vector2]:
     var sort_func: = func(a: Vector2, b: Vector2) -> bool: return a.x < b.x
-    sorted_points.sort_custom(sort_func)
-    points_changed.emit(sorted_points)
+    points.sort_custom(sort_func)
+    return points
+
+func update_size() -> void:
+    update_point_pos_cache(get_domain_to_output())
 
 func update_curve(linear_points: Array[Vector2], do_sort: bool = true, do_anim: bool = false, start_anim_if_changed: bool = false) -> void:
-    is_using_curve = true
-    sorted_points = linear_points.duplicate()
+    var new_points: = linear_points.duplicate()
     if do_sort:
-        resort_points()
+        sorted_points = _sort_points(new_points)
+    else:
+        sorted_points = new_points
     
+    refresh_curve(do_anim, start_anim_if_changed)
+    
+    # Do this after calling refresh curve, which will update the domain size
+    update_point_pos_cache(get_domain_to_output())
+    
+func refresh_curve(do_anim: bool = false, start_anim_if_changed: bool = false) -> void:
+    _check_for_unsorted()
+    queue_redraw()
+
+    is_using_curve = true
     plot_curve.clear_points()
     
     var min_x: float = sorted_points[0].x
@@ -198,7 +209,6 @@ func update_curve(linear_points: Array[Vector2], do_sort: bool = true, do_anim: 
             horizontal_max = lerpf(anim_info["h_max"], h_max, t)
             vertical_range = lerpf(anim_info["v_range"], v_range, t)
             vertical_offset = lerpf(anim_info["v_offset"], v_offset, t)
-            queue_redraw()
         else:
             if start_anim_if_changed:
                 if horizontal_min != h_min or horizontal_max != h_max or vertical_range != v_range or vertical_offset != v_offset:
@@ -240,9 +250,6 @@ func draw_curve(domain_to_output: Transform2D) -> void:
             visualize_curve_exact(output_scale)
         else:
             visualize_curve_sampled(output_scale)
-        
-        if is_curve_points_editable:
-            update_point_pos_cache(domain_to_output)
     else:
         visualize_exp(output_scale)
 
@@ -449,7 +456,7 @@ func drop_point(event: InputEventMouseButton) -> void:
     dragging_point_idx = -1
     if not get_rect().has_point(event.position):
         start_animating_region()
-    input_changed_curve()
+    input_changed_curve(get_domain_to_output())
 
 func _gui_input(event: InputEvent) -> void:
     if not (is_using_curve and is_curve_points_editable):
@@ -483,11 +490,13 @@ func _gui_input(event: InputEvent) -> void:
 func add_new_point(mbe: InputEventMouseButton) -> void:
     var domain_to_output: = get_domain_to_output()
     var inv_transform: = domain_to_output.affine_inverse()
-    var new_curve_pos: = inv_transform * mbe.position
+    var new_curve_pos: = (inv_transform * mbe.position).snapped(Vector2.ONE * snapping_interval)
+
     sorted_points.append(new_curve_pos)
-    resort_points()
+    sorted_points = _sort_points(sorted_points)
     points_changed.emit(sorted_points)
-    input_changed_curve()
+
+    input_changed_curve(domain_to_output)
     
 func check_for_start_dragging(mbe: InputEventMouseButton) -> bool:
     for point_idx in point_position_cache.size():
@@ -500,8 +509,8 @@ func check_for_start_dragging(mbe: InputEventMouseButton) -> bool:
 func check_for_remove_point(mbe: InputEventMouseButton) -> bool:
     for point_idx in point_position_cache.size():
         if point_position_cache[point_idx].distance_squared_to(mbe.position) < can_drag_dist_squared:
+            # Expects external call to curve_update, so don't need to refresh or update cached point positions
             delete_point.emit(point_idx)
-            input_changed_curve()
             return true
     return false
 
@@ -520,47 +529,50 @@ func drag_point(mouse_motion_event: InputEventMouseMotion) -> void:
     if new_idx > dragging_point_idx:
         new_idx -= 1
     
+    var domain_to_output: = get_domain_to_output()
     if new_idx == dragging_point_idx:
-        update_point_from_plot_pos(new_plot_pos)
+        update_point_from_plot_pos(domain_to_output, new_plot_pos)
+        input_changed_curve(domain_to_output, false, dragging_point_idx)
     else:
-        move_and_reorder_point(dragging_point_idx, new_idx, new_plot_pos)
+        move_and_reorder_point(domain_to_output, dragging_point_idx, new_idx, new_plot_pos)
+        input_changed_curve(domain_to_output, false)
     
-    input_changed_curve()
-    
-func input_changed_curve() -> void:
-    update_curve(sorted_points, false, false, true)
-    queue_redraw()
+func input_changed_curve(domain_to_output: Transform2D, start_anim_if_changed: bool = true, idx_updated: int = -1) -> void:
+    refresh_curve(false, start_anim_if_changed)
+    update_point_pos_cache(domain_to_output, idx_updated)
 
-func update_point_from_plot_pos(new_plot_pos: Vector2) -> void:
-    var domain_to_output: = get_domain_to_output()
+func update_point_from_plot_pos(domain_to_output: Transform2D, new_plot_pos: Vector2) -> void:
     var inv_transform: = domain_to_output.affine_inverse()
-    var new_curve_pos: = inv_transform * new_plot_pos
+    var new_curve_pos: = (inv_transform * new_plot_pos).snapped(Vector2.ONE * snapping_interval)
     sorted_points[dragging_point_idx] = new_curve_pos
-    points_changed.emit(sorted_points)
-    update_point_pos_cache(domain_to_output, dragging_point_idx)
+    points_adjusted.emit(sorted_points)
 
-func move_and_reorder_point(old_idx: int, new_idx: int, new_plot_pos: Vector2) -> void:
-    var domain_to_output: = get_domain_to_output()
+func move_and_reorder_point(domain_to_output: Transform2D, old_idx: int, new_idx: int, new_plot_pos: Vector2) -> void:
     var inv_transform: = domain_to_output.affine_inverse()
 
     sorted_points.remove_at(old_idx)
-    sorted_points.insert(new_idx, inv_transform * new_plot_pos)
-    points_changed.emit(sorted_points)
+    sorted_points.insert(new_idx, (inv_transform * new_plot_pos).snapped(Vector2.ONE * snapping_interval))
+    points_adjusted.emit(sorted_points)
     dragging_point_idx = new_idx
-    update_point_pos_cache(domain_to_output)
 
 
 func update_point_pos_cache(domain_to_output: Transform2D, point_idx: int = -1) -> void:
-    if point_position_cache.size() != plot_curve.point_count:
+    if point_position_cache.size() != sorted_points.size():
         create_point_pos_cache(domain_to_output)
         return
     if point_idx >= 0:
-        point_position_cache[point_idx] = domain_to_output * plot_curve.get_point_position(point_idx)
+        point_position_cache[point_idx] = domain_to_output * sorted_points[point_idx]
     else:
         for i in point_position_cache.size():
-            point_position_cache[i] = domain_to_output * plot_curve.get_point_position(i)
+            point_position_cache[i] = domain_to_output * sorted_points[i]
 
 func create_point_pos_cache(domain_to_output: Transform2D) -> void:
     point_position_cache.clear()
-    for i in plot_curve.point_count:
-        point_position_cache.append(domain_to_output * plot_curve.get_point_position(i))
+    for i in sorted_points.size():
+        point_position_cache.append(domain_to_output * sorted_points[i])
+
+func _check_for_unsorted() -> void:
+    if not OS.has_feature("debug"):
+        return
+    var sorted: = _sort_points(sorted_points)
+    assert(sorted == sorted_points, "Curve Plot: assumed sorted points but they are not sorted")

@@ -1,6 +1,8 @@
 extends Node
 class_name SettingsSyncer
 
+signal updated_from_asset_node()
+
 var asset_node: HyAssetNode
 @export var watched_settings: Dictionary[String, NodePath] = {}
 @export var setting_gd_types: Dictionary[String, int] = {}
@@ -88,5 +90,5 @@ func update_from_asset_node() -> void:
             input_control.text = str(asset_node.settings[setting_name])
         elif input_control is BaseButton and input_control.toggle_mode:
             input_control.set_pressed_no_signal(bool(asset_node.settings[setting_name]))
-
+    updated_from_asset_node.emit()
 

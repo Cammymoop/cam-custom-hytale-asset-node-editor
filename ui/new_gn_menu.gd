@@ -387,6 +387,9 @@ func on_tree_size_changed() -> void:
     scroll_container.custom_minimum_size.y = clampi(int(node_list_tree.size.y), scroll_min_height, scroll_max_height)
 
 func set_max_popup_height() -> void:
+    if Engine.is_editor_hint():
+        scroll_max_height = roundi(ProjectSettings.get_setting("display/window/size/viewport_height") * scroll_max_height_ratio)
+        return
     var window_height: = get_window().size.y
     scroll_max_height = roundi(window_height * scroll_max_height_ratio)
 

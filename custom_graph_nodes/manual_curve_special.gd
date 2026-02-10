@@ -10,8 +10,11 @@ var my_points: Array[Vector2] = []
 
 var points_table: GridContainer
 var graph_container: MarginContainer
-@onready var mode_buttons: HToggleButtons = $ModeButtons
+@onready var mode_buttons: HToggleButtons = find_child("ModeButtons")
+@onready var extra_settings_menu_btn: MenuButton = find_child("ExtraSettingsBtn")
+@onready var extra_settings_menu: PopupMenu = extra_settings_menu_btn.get_popup()
 @onready var new_point_button: Button = $NewPointButton
+@onready var export_as_edit: CustomLineEdit = find_child("SettingEdit_ExportAs")
 
 @export var curve_plot: CurvePlot
 
@@ -24,6 +27,8 @@ var last_size: Dictionary = {
 }
 
 func _notification(what: int) -> void:
+    # get references to children here, this allows calling methods which use these references
+    # immediately after the manual curve node scene is instantiated before adding to the scene tree
     if what == NOTIFICATION_SCENE_INSTANTIATED:
         points_table = $PointsTable
         graph_container = $GraphContainer
@@ -35,9 +40,12 @@ func _ready() -> void:
         graph_edit.zoom_changed.connect(on_zoom_changed)
     mode_buttons.allow_all_off = false
     mode_buttons.option_changed.connect(on_mode_changed)
-    new_point_button.pressed.connect(add_new_point)
-    
     mode_buttons.set_text_pressed(cur_mode)
+
+    new_point_button.pressed.connect(add_new_point_auto)
+    
+    extra_settings_menu_btn.about_to_popup.connect(update_extra_settings_menu)
+    extra_settings_menu.index_pressed.connect(on_extra_settings_menu_index_pressed)
 
     _set_mode_to(cur_mode)
     #last_size[cur_mode] = size
@@ -46,7 +54,18 @@ func _ready() -> void:
     
     curve_plot.set_as_manual_curve()
     curve_plot.points_changed.connect(replace_points)
+    curve_plot.points_adjusted.connect(adjust_points)
     curve_plot.delete_point.connect(remove_point_at)
+    
+    make_settings_syncer(asset_node)
+    settings_syncer.updated_from_asset_node.connect(on_settings_syncer_updated_from_asset_node)
+    settings_syncer.add_watched_setting("ExportAs", export_as_edit, TYPE_STRING)
+
+    if not asset_node.settings.get("ExportAs", ""):
+        export_as_edit.get_parent().hide()
+    export_as_edit.focus_exited.connect(check_show_export_as)
+
+# REQUIRED METHODS FOR SPECIAL GRAPH NODES::
 
 func setup_ports() -> void:
     # note, don't need to add a child control to enable the first port because there's already multiple children from the scene
@@ -64,6 +83,8 @@ func get_own_asset_nodes() -> Array[HyAssetNode]:
     ans.append_array(asset_node.get_all_connected_nodes(POINTS_CONNECTION_NAME))
     return ans
 
+# end REQUIRED METHODS FOR SPECIAL GRAPH NODES::
+
 
 func on_resized() -> void:
     last_size[cur_mode] = size
@@ -77,12 +98,17 @@ func load_points_from_an_connection() -> void:
     my_points.clear()
     for point_asset_node in asset_node.get_all_connected_nodes(POINTS_CONNECTION_NAME):
         my_points.append(Vector2(point_asset_node.settings["In"], point_asset_node.settings["Out"]))
+    refresh_points_displayed()
+
+func refresh_points_displayed() -> void:
     if cur_mode == "table":
         refresh_table_rows()
     elif cur_mode == "graph":
         curve_plot.update_curve(my_points)
 
+## Creates undo step
 func remove_point_at(row_idx: int) -> void:
+    var old_points: = my_points.duplicate()
     var asset_node_count: = asset_node.num_connected_asset_nodes(POINTS_CONNECTION_NAME)
     if row_idx < 0 or row_idx >= asset_node_count:
         push_warning("manual curve special: remove point index %s is out of range %s-%s" % [row_idx, 0, asset_node_count - 1])
@@ -90,6 +116,8 @@ func remove_point_at(row_idx: int) -> void:
     asset_node.remove_node_from_connection_at(POINTS_CONNECTION_NAME, row_idx)
     graph_edit.remove_asset_node(point_asset_node)
     load_points_from_an_connection()
+    
+    create_points_change_undo_step(old_points)
 
 func get_table_should_shrink() -> bool:
     var cur_minimum_height: float = get_combined_minimum_size().y
@@ -124,13 +152,34 @@ func refresh_table_rows() -> void:
             last_size[cur_mode] = size
 
 
+## Creates undo step
 func table_value_changed(new_value: float, row_idx: int, is_in: bool) -> void:
+    var old_points: = my_points.duplicate()
     my_points[row_idx][0 if is_in else 1] = new_value
     update_ans_from_my_points()
+    
+    create_points_change_undo_step(old_points)
 
-func replace_points(new_points: Array[Vector2]) -> void:
+## Creates undo step if with_undo = true (default)
+func replace_points(new_points: Array[Vector2], with_undo: bool = true) -> void:
+    var old_points: = my_points.duplicate()
+    my_points = new_points
+    if not with_undo:
+        prints("replacing points, old: %s, new: %s" % [old_points, new_points])
+    update_ans_from_my_points()
+    if not with_undo:
+        prints("refreshing displayed points")
+    refresh_points_displayed()
+    
+    if with_undo:
+        create_points_change_undo_step(old_points)
+
+## Creates undo step that collapses with repeated calls
+func adjust_points(new_points: Array[Vector2]) -> void:
+    var old_points: = my_points.duplicate()
     my_points = new_points
     update_ans_from_my_points()
+    create_points_adj_undo_step(old_points)
 
 func update_ans_from_my_points() -> void:
     resize_ans_from_my_points()
@@ -145,7 +194,7 @@ func resize_ans_from_my_points() -> void:
         return
     if cur_an_count < my_points.size():
         for i in my_points.size() - cur_an_count:
-            add_new_point(false)
+            _add_new_point_unchecked()
     else:
         for i in cur_an_count - my_points.size():
             _pop_asset_node_point()
@@ -160,6 +209,7 @@ func get_table_label(with_text: String) -> Label:
 
 func get_table_input_field(with_value: String) -> GNNumberEdit:
     var new_input_field: = GNNumberEdit.new()
+    new_input_field.expand_to_text_length = true
     new_input_field.set_value_directly(float(with_value))
     new_input_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     return new_input_field
@@ -183,10 +233,7 @@ func _set_mode_to(new_mode_name: String) -> void:
     show_nodes_for_mode(new_mode_name)
     size = last_size[new_mode_name]
     
-    if cur_mode == "table":
-        refresh_table_rows()
-    elif cur_mode == "graph":
-        curve_plot.update_curve(my_points)
+    refresh_points_displayed()
 
 func show_nodes_for_mode(the_mode: String) -> void:
     if the_mode == "table":
@@ -198,15 +245,83 @@ func show_nodes_for_mode(the_mode: String) -> void:
         new_point_button.hide()
         graph_container.show()
 
-func add_new_point(reload_my_points: bool = true) -> void:
-    var new_curve_point_an: HyAssetNode = graph_edit.get_new_asset_node("CurvePoint")
-    var last_point_vec: Vector2 = my_points.back() if my_points else Vector2.ZERO
-    new_curve_point_an.settings["In"] = snappedf(last_point_vec.x + 0.01, 0.01)
-    new_curve_point_an.settings["Out"] = last_point_vec.y
-    asset_node.append_node_to_connection("Points", new_curve_point_an)
-    if reload_my_points:
+## Creates undo step if refresh_view = true
+func add_new_point_auto(refresh_view: bool = true) -> void:
+    var new_point_pos: Vector2 = Vector2.ZERO
+    if my_points.size() == 1:
+        new_point_pos = Vector2(snappedf(my_points[0].x + 0.01, 0.01), my_points[0].y)
+    elif my_points.size() > 1:
+        var last_point_pos: Vector2 = my_points[my_points.size() - 1]
+        var prev_point_pos: Vector2 = my_points[my_points.size() - 2]
+        if absf(last_point_pos.x - prev_point_pos.x) < 0.2:
+            new_point_pos = Vector2(snappedf(last_point_pos.x + 1, 0.01), last_point_pos.y)
+        else:
+            new_point_pos = Vector2(snappedf(last_point_pos.x + 0.01, 0.01), last_point_pos.y)
+
+    _add_new_point_unchecked(new_point_pos)
+
+    if refresh_view:
+        var old_points: = my_points.duplicate()
         load_points_from_an_connection()
+        create_points_change_undo_step(old_points)
+
+func _add_new_point_unchecked(with_pos: Vector2 = Vector2.ZERO) -> HyAssetNode:
+    var new_curve_point_an: HyAssetNode = graph_edit.get_new_asset_node("CurvePoint")
+    new_curve_point_an.settings["In"] = with_pos.x
+    new_curve_point_an.settings["Out"] = with_pos.y
+    asset_node.append_node_to_connection("Points", new_curve_point_an)
+    return new_curve_point_an
 
 func _pop_asset_node_point() -> void:
     var popped_node: HyAssetNode = asset_node.pop_node_from_connection(POINTS_CONNECTION_NAME)
     graph_edit.remove_asset_node(popped_node)
+
+
+func undo_redo_change_points(points_to_restore: Array[Vector2]) -> void:
+    replace_points(points_to_restore, false)
+
+func create_points_change_undo_step(old_points: Array[Vector2]) -> void:
+    graph_edit.undo_manager.create_action("Change Manual Curve Points")
+
+    graph_edit.undo_manager.add_do_method(undo_redo_change_points.bind(my_points.duplicate()))
+
+    graph_edit.undo_manager.add_undo_method(undo_redo_change_points.bind(old_points.duplicate()))
+
+    graph_edit.undo_manager.commit_action(false)
+
+func create_points_adj_undo_step(old_points: Array[Vector2]) -> void:
+    graph_edit.undo_manager.create_action("Move Manual Curve Points", UndoRedo.MERGE_ENDS)
+
+    graph_edit.undo_manager.add_do_method(undo_redo_change_points.bind(my_points.duplicate()))
+
+    graph_edit.undo_manager.add_undo_method(undo_redo_change_points.bind(old_points.duplicate()))
+
+    graph_edit.undo_manager.commit_action(false)
+
+
+func update_extra_settings_menu() -> void:
+    for i in extra_settings_menu.item_count:
+        if extra_settings_menu.is_item_separator(i):
+            continue
+        var item_text: = extra_settings_menu.get_item_text(i)
+        if item_text == "ExportAs":
+            extra_settings_menu.set_item_checked(i, asset_node.settings.get("ExportAs", "") != "")
+
+func on_extra_settings_menu_index_pressed(index: int) -> void:
+    var pressed_text: = extra_settings_menu.get_item_text(index)
+    if pressed_text == "ExportAs":
+        var cur_export_as: String = asset_node.settings.get("ExportAs", "")
+        if cur_export_as:
+            asset_node.update_setting_value("ExportAs", "")
+        else:
+            export_as_edit.get_parent().show()
+            export_as_edit.grab_focus()
+        
+func on_settings_syncer_updated_from_asset_node() -> void:
+    check_show_export_as()
+
+func check_show_export_as() -> void:
+    if asset_node.settings.get("ExportAs", ""):
+        export_as_edit.get_parent().show()
+    else:
+        export_as_edit.get_parent().hide()

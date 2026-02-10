@@ -105,6 +105,8 @@ func get_label_stylebox_for_type(type_name: String) -> StyleBoxFlat:
     return get_color_label_stylebox(get_color_for_type(type_name))
 
 func save_custom_theme(message_callback: Callable) -> void:
+    if Engine.is_editor_hint():
+        return
     print("saving custom theme")
     if not DirAccess.dir_exists_absolute(CUSTOM_THEME_FILE_PATH.get_base_dir()):
         DirAccess.make_dir_absolute(CUSTOM_THEME_FILE_PATH.get_base_dir())
@@ -126,6 +128,8 @@ func save_custom_theme(message_callback: Callable) -> void:
     message_callback.call("Custom Colors Saved")
 
 func load_custom_theme(message_callback: Callable = Callable()) -> void:
+    if Engine.is_editor_hint():
+        return
     if not FileAccess.file_exists(CUSTOM_THEME_FILE_PATH):
         return
 
