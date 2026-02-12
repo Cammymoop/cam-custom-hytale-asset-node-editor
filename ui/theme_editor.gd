@@ -23,7 +23,7 @@ func update_theme() -> void:
     update_graph_edit_theme()
 
 func update_graph_edit_theme() -> void:
-    var graph_edit: AssetNodeGraphEdit = get_tree().current_scene.find_child("AssetNodeGraphEdit")
+    var graph_edit: CHANE_AssetNodeGraphEdit = get_tree().current_scene.find_child("ANGraphEdit")
     graph_edit.update_all_ges_themes()
 
 func show_toast_message(message: String) -> void:

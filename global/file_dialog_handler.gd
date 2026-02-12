@@ -53,7 +53,7 @@ func on_open_dialog_closed(file_dialog: FileDialog) -> void:
 func show_save_file_dialog(use_cur_file_name: bool) -> void:
     var file_name: = ""
     if use_cur_file_name:
-        var graph_edit: AssetNodeGraphEdit = get_tree().current_scene.find_child("AssetNodeGraphEdit")
+        var graph_edit: CHANE_AssetNodeGraphEdit = get_tree().current_scene.find_child("ANGraphEdit")
         file_name = graph_edit.cur_file_name
 
     remove_old_dialogs()

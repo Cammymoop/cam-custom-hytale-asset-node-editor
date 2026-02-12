@@ -5,10 +5,10 @@ var types_with_special_nodes: Array[String] = [
     "ManualCurve",
 ]
 
-var graph_edit: AssetNodeGraphEdit
+var graph_edit: CHANE_AssetNodeGraphEdit
 
 func _ready() -> void:
-    graph_edit = get_parent() as AssetNodeGraphEdit
+    graph_edit = get_parent() as CHANE_AssetNodeGraphEdit
 
 func make_duplicate_special_gn(special_gn: CustomGraphNode, asset_node_set: Array[HyAssetNode]) -> CustomGraphNode:
     var main_asset_node: HyAssetNode = graph_edit.safe_get_an_from_gn(special_gn, asset_node_set)

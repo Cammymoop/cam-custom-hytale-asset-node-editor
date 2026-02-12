@@ -1,11 +1,13 @@
 extends GraphEdit
-class_name AssetNodeGraphEdit
+class_name CHANE_AssetNodeGraphEdit
 
 signal finished_saving
 signal zoom_changed(new_zoom: float)
 
 @export var save_formatted_json: = true
 @export_file_path("*.json") var test_json_file: String = ""
+
+var serializer: CHANE_HyAssetNodeSerializer
 
 var parsed_json_data: Dictionary = {}
 var parsed_has_no_positions: = false
@@ -145,6 +147,10 @@ func get_version_number_string() -> String:
     return get_plain_version() + prerelease_string
 
 func _ready() -> void:
+    serializer = CHANE_HyAssetNodeSerializer.new()
+    serializer.name = "ANSerializer"
+    add_child(serializer, true)
+
     get_window().files_dropped.connect(on_files_dropped)
     assert(popup_menu_root != null, "Popup menu root is not set, please set it in the inspector")
     popup_menu_root.new_gn_menu.node_type_picked.connect(on_new_node_type_picked)
@@ -607,7 +613,6 @@ func duplicate_and_add_asset_node(asset_node: HyAssetNode, new_gn: GraphNode = n
     var asset_node_copy: = asset_node.get_shallow_copy(new_id_for_copy)
     _register_asset_node(asset_node_copy)
     floating_tree_roots.append(asset_node_copy)
-    an_lookup[asset_node_copy.an_node_id] = asset_node_copy
     if new_gn:
         gn_lookup[asset_node_copy.an_node_id] = new_gn
         new_gn.set_meta("hy_asset_node_id", asset_node_copy.an_node_id)
@@ -645,6 +650,7 @@ func _register_asset_node(asset_node: HyAssetNode) -> void:
         print_debug("Asset node ID %s already registered" % asset_node.an_node_id)
     else:
         all_asset_node_ids.append(asset_node.an_node_id)
+    an_lookup[asset_node.an_node_id] = asset_node
 
 func _delete_request(delete_ge_names: Array[StringName]) -> void:
     var ges_to_remove: Array[GraphElement] = []
@@ -731,12 +737,12 @@ func get_new_asset_node(asset_node_type: String, id_prefix: String = "") -> HyAs
     var new_asset_node: = HyAssetNode.new()
     new_asset_node.an_node_id = get_unique_an_id(id_prefix)
     new_asset_node.an_type = asset_node_type
-    new_asset_node.an_name = SchemaManager.schema.get_node_type_default_name(asset_node_type)
+    new_asset_node.default_title = SchemaManager.schema.get_node_type_default_name(asset_node_type)
+    new_asset_node.title = new_asset_node.default_title
     _register_asset_node(new_asset_node)
     floating_tree_roots.append(new_asset_node)
-    an_lookup[new_asset_node.an_node_id] = new_asset_node
     init_asset_node(new_asset_node)
-    new_asset_node.has_inner_asset_nodes = true
+    new_asset_node.shallow = false
 
     return new_asset_node
 
@@ -1126,7 +1132,7 @@ func clear_graph() -> void:
     global_gn_counter = 0
 
 func create_graph_from_parsed_data() -> void:
-    await get_tree().create_timer(0.1).timeout
+    #await get_tree().create_timer(0.1).timeout
     
     if use_json_positions:
         pass#relative_root_position = get_node_position_from_meta(root_node.an_node_id)
@@ -1144,104 +1150,6 @@ func get_node_position_from_meta(node_id: String) -> Vector2:
     var node_meta: Dictionary = asset_node_meta.get(node_id, {}) as Dictionary
     var meta_pos: Dictionary = node_meta.get("$Position", {"$x": relative_root_position.x, "$y": relative_root_position.y - 560})
     return Vector2(meta_pos["$x"], meta_pos["$y"])
-    
-func parse_asset_node_shallow(old_style: bool, asset_node_data: Dictionary, output_value_type: String = "", known_node_type: String = "") -> HyAssetNode:
-    if not asset_node_data:
-        print_debug("Asset node data is empty")
-        return null
-
-    if old_style and not known_node_type:
-        var type_key_val: String = asset_node_data.get("Type", "NO_TYPE_KEY")
-        var inferred_node_type: String = SchemaManager.schema.resolve_asset_node_type(type_key_val, output_value_type)
-        if not inferred_node_type or inferred_node_type == "Unknown":
-            print_debug("Old-style inferring node type failed, returning null")
-            push_error("Old-style inferring node type failed, returning null")
-            return null
-        else:
-            asset_node_data["$NodeId"] = get_unique_an_id(SchemaManager.schema.get_id_prefix_for_node_type(inferred_node_type))
-    elif not asset_node_data.has("$NodeId"):
-        print_debug("Asset node data does not have a $NodeId, it is probably not an asset node")
-        return null
-    
-    
-    var asset_node = HyAssetNode.new()
-    asset_node.an_node_id = asset_node_data["$NodeId"]
-    
-    if asset_node_data.has("$Comment"):
-        asset_node.comment = asset_node_data["$Comment"]
-    
-    if an_lookup.has(asset_node.an_node_id):
-        print_debug("Warning: Asset node with ID %s already exists in lookup, overriding..." % asset_node.an_node_id)
-    an_lookup[asset_node.an_node_id] = asset_node
-    
-
-    if known_node_type != "":
-        asset_node.an_type = known_node_type
-    elif output_value_type != "ROOT":
-        asset_node.an_type = SchemaManager.schema.resolve_asset_node_type(asset_node_data.get("Type", "NO_TYPE_KEY"), output_value_type, asset_node.an_node_id)
-    
-    var node_schema: Dictionary = {}
-    if asset_node.an_type and asset_node.an_type != "Unknown":
-        node_schema = SchemaManager.schema.node_schema.get(asset_node.an_type, {})
-        if not node_schema:
-            print_debug("Warning: Node schema not found for node type: %s" % asset_node.an_type)
-    
-    asset_node.raw_tree_data = asset_node_data.duplicate(true)
-    init_asset_node(asset_node)
-
-    # fill out stuff in data even if it isn't in the schema
-    for other_key in asset_node_data.keys():
-        if other_key.begins_with("$"):
-            continue
-        if other_key in HyAssetNode.special_keys:
-            # Type is a special key but PCNDistanceFunction uses it differently, hence the special case
-            if not node_schema or (not node_schema.get("settings", {}).has(other_key)):
-                continue
-        
-        var connected_data = check_for_asset_nodes(old_style, asset_node_data[other_key])
-        if other_key in asset_node.connection_list or connected_data != null:
-            if connected_data == null:
-                if asset_node.an_type != "Unknown" and node_schema["connections"][other_key].get("multi", false):
-                    connected_data = []
-                else:
-                    connected_data = {}
-            asset_node.connections[other_key] = connected_data
-        else:
-            var parsed_value: Variant = asset_node_data[other_key]
-            if node_schema and node_schema.get("settings", {}).has(other_key):
-                var expected_gd_type: int = node_schema["settings"][other_key]["gd_type"]
-                if expected_gd_type == TYPE_INT:
-                    parsed_value = roundi(float(parsed_value))
-                elif expected_gd_type == TYPE_FLOAT:
-                    parsed_value = float(parsed_value)
-                elif expected_gd_type == TYPE_STRING:
-                    if not typeof(parsed_value) == TYPE_STRING:
-                        print_debug("Warning: Setting %s is expected to be a string, but is not: %s" % [other_key, parsed_value])
-            asset_node.settings[other_key] = parsed_value
-    
-    return asset_node
-
-func check_for_asset_nodes(old_style: bool, val: Variant) -> Variant:
-    var test_dict: Dictionary
-    if val is Dictionary:
-        test_dict = val
-    elif val is Array:
-        if val.size() == 0:
-            return val
-        elif typeof(val[0]) == TYPE_DICTIONARY:
-            test_dict = val[0]
-        else:
-            return null
-    elif val != null:
-        return null
-    
-    if old_style:
-        if test_dict.is_empty() or test_dict.has("$Position"):
-            return val
-    else:
-        if test_dict.is_empty() or test_dict.has("$NodeId"):
-            return val
-    return null
 
 func init_asset_node(asset_node: HyAssetNode, with_meta_data: bool = false, meta_data: Dictionary = {}) -> void:
     if not with_meta_data:
@@ -1253,45 +1161,19 @@ func init_asset_node(asset_node: HyAssetNode, with_meta_data: bool = false, meta
     else:
         print_debug("Warning: Asset node type is unknown or empty")
 
-    asset_node.an_name = SchemaManager.schema.get_node_type_default_name(asset_node.an_type)
+    asset_node.default_title = SchemaManager.schema.get_node_type_default_name(asset_node.an_type)
+    asset_node.title = asset_node.default_title
     if meta_data.has(asset_node.an_node_id) and meta_data[asset_node.an_node_id].has("$Title"):
-        asset_node.an_name = meta_data[asset_node.an_node_id]["$Title"]
-        asset_node.title = asset_node.an_name
+        asset_node.title = meta_data[asset_node.an_node_id]["$Title"]
     
     var connections_schema: Dictionary = type_schema.get("connections", {})
     for conn_name in connections_schema.keys():
         asset_node.connection_list.append(conn_name)
         asset_node.connected_node_counts[conn_name] = 0
-        if connections_schema[conn_name].get("multi", false):
-            asset_node.connections[conn_name] = []
-        else:
-            asset_node.connections[conn_name] = null
     
     var settings_schema: Dictionary = type_schema.get("settings", {})
     for setting_name in settings_schema.keys():
         asset_node.settings[setting_name] = settings_schema[setting_name].get("default_value", null)
-
-func parse_asset_node_deep(old_style: bool, asset_node_data: Dictionary, output_value_type: String = "", base_node_type: String = "") -> Dictionary:
-    var parsed_node: = parse_asset_node_shallow(old_style, asset_node_data, output_value_type, base_node_type)
-    var all_nodes: Array[HyAssetNode] = [parsed_node]
-    for conn in parsed_node.connection_list:
-        if parsed_node.is_connection_empty(conn):
-            continue
-        
-        var conn_nodes_data: = parsed_node.get_raw_connected_nodes(conn)
-        for conn_node_idx in conn_nodes_data.size():
-            var conn_value_type: = "Unknown"
-            if parsed_node.an_type != "Unknown":
-                conn_value_type = SchemaManager.schema.node_schema[parsed_node.an_type]["connections"][conn]["value_type"]
-
-            var sub_parse_result: = parse_asset_node_deep(old_style, conn_nodes_data[conn_node_idx], conn_value_type)
-            all_nodes.append_array(sub_parse_result["all_nodes"])
-            parsed_node.set_connection(conn, conn_node_idx, sub_parse_result["base"])
-        parsed_node.set_connection_count(conn, conn_nodes_data.size())
-
-    parsed_node.has_inner_asset_nodes = true
-    
-    return {"base": parsed_node, "all_nodes": all_nodes}
 
 func parse_root_asset_node(base_node: Dictionary) -> void:
     hy_workspace_id = ""
@@ -1364,13 +1246,15 @@ func parse_root_asset_node(base_node: Dictionary) -> void:
             asset_node_meta[node_id] = meta_data["$Nodes"][node_id]
 
 
-    var parse_result: = parse_asset_node_deep(old_style_format, base_node, "", root_node_type)
-    set_root_node(parse_result["base"])
-    all_asset_nodes.append_array(parse_result["all_nodes"])
-    parsed_node_count += parse_result["all_nodes"].size()
-    #print("Root node parsed, %d nodes" % parse_result["all_nodes"].size(), " (total: %d)" % parsed_node_count)
-    for an in parse_result["all_nodes"]:
-        all_asset_node_ids.append(an.an_node_id)
+    var root_infer_hints: Dictionary = { "asset_node_type": root_node_type }
+    var root_parse_result: = serializer.parse_asset_node_tree(old_style_format, base_node, asset_node_meta, root_infer_hints)
+    if not root_parse_result.success:
+        push_error("Failed to parse asset node root tree")
+        CHANE_HyAssetNodeSerializer.debug_dump_tree_results(root_parse_result)
+        return
+    register_tree_result_ans(root_parse_result)
+    set_root_node(root_parse_result.root_node)
+    parsed_node_count += root_parse_result.all_nodes.size()
 
     if not old_style_format:
         for floating_tree in base_node["$NodeEditorMetadata"].get("$FloatingNodes", []):
@@ -1381,16 +1265,17 @@ func parse_root_asset_node(base_node: Dictionary) -> void:
             if floating_root_id in an_lookup:
                 print_debug("Floating root node %s exists in another tree, assuming it was mistakenly added to floating tree roots, skipping" % floating_root_id)
                 continue
-
-            var floating_parse_result: = parse_asset_node_deep(false, floating_tree)
-            floating_tree_roots.append(floating_parse_result["base"])
+            
+            # No inference hints for floating tree roots
+            var floating_parse_result: = serializer.parse_asset_node_tree(false, floating_tree, asset_node_meta, {})
+            if not floating_parse_result.success:
+                push_error("Failed to parse floating tree root")
+                CHANE_HyAssetNodeSerializer.debug_dump_tree_results(floating_parse_result)
+                continue
+            register_tree_result_ans(floating_parse_result)
+            floating_tree_roots.append(floating_parse_result.root_node)
             parsed_node_count += floating_parse_result["all_nodes"].size()
-            #print("Floating tree parsed, %d nodes" % floating_parse_result["all_nodes"].size(), " (total: %d)" % parsed_node_count)
-            all_asset_nodes.append_array(floating_parse_result["all_nodes"])
-            for an in floating_parse_result["all_nodes"]:
-                all_asset_node_ids.append(an.an_node_id)
-    
-    if old_style_format:
+    else:
         all_meta = {}
         collect_node_positions_old_style_recursive(base_node)
         all_meta["$Nodes"] = asset_node_meta.duplicate(true)
@@ -1400,6 +1285,10 @@ func parse_root_asset_node(base_node: Dictionary) -> void:
         all_meta["$Links"] = base_node.get("$Links", {})
     
     loaded = true
+
+func register_tree_result_ans(tree_result: CHANE_HyAssetNodeSerializer.TreeParseResult) -> void:
+    for an in tree_result.all_nodes:
+        _register_asset_node(an)
 
 func collect_node_positions_old_style_recursive(cur_node_data: Dictionary) -> void:
     if not cur_node_data.has("$NodeId"):
@@ -1495,7 +1384,7 @@ func move_and_connect_children(asset_node_id: String, pos: Vector2) -> int:
     graph_node.position_offset = pos
 
     var child_pos: = pos + (Vector2.RIGHT * (graph_node.size.x + 40))
-    var connection_names: Array[String] = asset_node.connections.keys()
+    var connection_names: Array[String] = asset_node.connection_list.duplicate()
 
     for conn_idx in connection_names.size():
         var conn_name: = connection_names[conn_idx]
@@ -1508,7 +1397,7 @@ func move_and_connect_children(asset_node_id: String, pos: Vector2) -> int:
                 print_debug("Warning: Graph Node for Asset Node %s not found" % conn_an.an_node_id)
                 continue
 
-            if conn_an.connections.size() > 0:
+            if conn_an.connection_list.size() > 0:
                 child_pos.y = move_and_connect_children(conn_an.an_node_id, child_pos)
             else:
                 conn_gn.position_offset = child_pos
@@ -1663,7 +1552,7 @@ func new_graph_node(asset_node: HyAssetNode, newly_created: bool) -> CustomGraph
     if not output_type:
         graph_node.ignore_invalid_connection_type = true
 
-    graph_node.title = asset_node.an_name
+    graph_node.title = asset_node.title
     
     graph_node.was_right_clicked.connect(_on_graph_node_right_clicked)
     graph_node.titlebar_double_clicked.connect(_on_graph_node_titlebar_double_clicked)
@@ -1689,7 +1578,7 @@ func new_graph_node(asset_node: HyAssetNode, newly_created: bool) -> CustomGraph
             var type_connections: Dictionary = node_schema.get("connections", {})
             connection_names = type_connections.keys()
         else:
-            connection_names = asset_node.connections.keys()
+            connection_names = asset_node.connection_list.duplicate()
         var num_outputs: = connection_names.size()
         
         var setting_names: Array
@@ -2599,7 +2488,6 @@ func _redo_add_graph_element(the_graph_element: GraphElement, the_asset_node: Hy
 
 func _undo_redo_add_gn_and_an(the_graph_node: GraphNode, the_asset_node: HyAssetNode) -> void:
     _register_asset_node(the_asset_node)
-    an_lookup[the_asset_node.an_node_id] = the_asset_node
     gn_lookup[the_asset_node.an_node_id] = the_graph_node
     add_child(the_graph_node, true)
 

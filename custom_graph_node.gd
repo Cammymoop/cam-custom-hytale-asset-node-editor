@@ -19,9 +19,9 @@ var find_asset_node: bool = false:
     set(value):
         if not get_meta("hy_asset_node_id", ""):
             return
-        var graph_edit: = get_parent() as AssetNodeGraphEdit
+        var graph_edit: = get_parent() as CHANE_AssetNodeGraphEdit
         if not graph_edit:
-            print_debug("find asset node: no parent or parent is not AssetNodeGraphEdit")
+            print_debug("find asset node: no parent or parent is not CHANE_AssetNodeGraphEdit")
             return
         var an_id: String = get_meta("hy_asset_node_id", "")
         if not an_id in graph_edit.an_lookup:

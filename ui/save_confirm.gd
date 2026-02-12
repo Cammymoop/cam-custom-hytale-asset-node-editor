@@ -48,7 +48,7 @@ func show_save_dialog(save_as_current: bool) -> void:
         FileDialogHandler.requested_save_file.connect(current_was_saved.unbind(1), CONNECT_ONE_SHOT)
 
 func current_was_saved() -> void:
-    var graph_edit: AssetNodeGraphEdit = get_tree().current_scene.find_child("AssetNodeGraphEdit")
+    var graph_edit: CHANE_AssetNodeGraphEdit = get_tree().current_scene.find_child("ANGraphEdit")
     await graph_edit.finished_saving
     if after_save_callback.is_valid():
         after_save_callback.call()

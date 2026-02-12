@@ -83,7 +83,7 @@ grow_horizontal = 2
 grow_vertical = 2
 theme = ExtResource("1_0xm2m")
 
-[node name="AssetNodeGraphEdit" type="GraphEdit" parent="." unique_id=100492715 node_paths=PackedStringArray("popup_menu_root")]
+[node name="ANGraphEdit" type="GraphEdit" parent="." unique_id=100492715 node_paths=PackedStringArray("popup_menu_root")]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -103,7 +103,7 @@ test_json_file = "res://test_files/example_biomes/Basic.json"
 popup_menu_root = NodePath("../PopupMenuRoot")
 json_positions_scale = Vector2(0.6, 0.6)
 
-[node name="SpecialGNFactory" type="Node" parent="AssetNodeGraphEdit" unique_id=859398855]
+[node name="SpecialGNFactory" type="Node" parent="ANGraphEdit" unique_id=859398855]
 script = ExtResource("5_lquwl")
 metadata/_custom_type_script = "uid://d2ucs5vp8diew"
 

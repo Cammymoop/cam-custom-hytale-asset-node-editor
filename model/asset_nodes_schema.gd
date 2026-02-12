@@ -16,6 +16,13 @@ func get_node_type_default_name(node_type: String) -> String:
         return node_type
     return node_schema[node_type]["display_name"]
 
+func get_an_connection_value_type(an: HyAssetNode, conn_name: String) -> String:
+    if not an.an_type or an.an_type == "Unknown":
+        return ""
+    if not node_schema[an.an_type].get("connections", {}).has(conn_name):
+        return ""
+    return node_schema[an.an_type]["connections"][conn_name]["value_type"]
+
 func resolve_root_asset_node_type(workspace_id: String, node_data: Dictionary) -> String:
     if not workspace_id:
         if node_data.get("$NodeId", ""):
@@ -88,6 +95,9 @@ func resolve_asset_node_type(type_key: String, output_value_type: String, node_i
             print_debug("Type inference key not found: %s" % type_inference_key)
             return "Unknown"
         return connection_type_node_type_lookup[type_inference_key]
+
+func infer_asset_node_type_from_id(node_id: String) -> String:
+    return _unknown_output_type_inference(node_id)
 
 ## Needed for floating node roots in the current format
 func _unknown_output_type_inference(node_id: String) -> String:

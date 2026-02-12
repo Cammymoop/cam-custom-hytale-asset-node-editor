@@ -3,7 +3,7 @@ class_name ManualCurveSpecialGN
 
 const HToggleButtons = preload("res://ui/h_toggle_buttons.gd")
 
-var graph_edit: AssetNodeGraphEdit
+var graph_edit: CHANE_AssetNodeGraphEdit
 var asset_node: HyAssetNode
 
 var my_points: Array[Vector2] = []

@@ -4,15 +4,14 @@ extends Resource
 signal settings_changed()
 
 @export var an_node_id: String = ""
-@export var an_name: String = ""
 @export var an_type: String = ""
 
 @export var title: String = ""
+@export var default_title: String = ""
 @export var comment: String = ""
 
-@export var connections: Dictionary[String, Variant] = {}
 @export var connection_list: Array[String] = []
-@export var has_inner_asset_nodes: bool = false
+@export var shallow: bool = true
 @export var connected_asset_nodes: Dictionary[String, HyAssetNode] = {}
 @export var connected_node_counts: Dictionary[String, int] = {}
 
@@ -24,65 +23,50 @@ signal settings_changed()
 
 static var special_keys: Array[String] = ["Type"]
 
-func is_connection_empty(conn_name: String) -> bool:
-    if has_inner_asset_nodes:
-        if not connection_list.has(conn_name):
-            print_debug("Connection name %s not found in connection list" % conn_name)
-            return true
-        return connected_node_counts[conn_name] == 0
-
-    if not connections.has(conn_name):
-        print_debug("Connection name %s not found in connection names" % conn_name)
+func is_raw_connection_empty(conn_name: String) -> bool:
+    if not connection_list.has(conn_name):
+        print_debug("Connection name %s not found in connection list" % conn_name)
         return true
-    if connections[conn_name] == null:
+    if not raw_tree_data.has(conn_name):
         return true
-    var conn_type: = typeof(connections[conn_name])
-    if conn_type == TYPE_DICTIONARY and connections[conn_name].is_empty():
+    if typeof(raw_tree_data[conn_name]) == TYPE_DICTIONARY and raw_tree_data[conn_name].is_empty():
         return true
-    if conn_type == TYPE_ARRAY and connections[conn_name].size() == 0:
+    elif typeof(raw_tree_data[conn_name]) == TYPE_ARRAY and raw_tree_data[conn_name].size() == 0:
         return true
     return false
 
-func num_connected_asset_nodes(conn_name: String) -> int:
-    if has_inner_asset_nodes:
-        return _num_connected_asset_nodes_full(conn_name)
+func get_raw_connected_nodes(conn_name: String) -> Array:
+    if not raw_tree_data.has(conn_name):
+        return []
 
-    var conn_type: = typeof(connections[conn_name])
-    if conn_type == TYPE_DICTIONARY:
-        return 1
-    if conn_type == TYPE_ARRAY:
-        return connections[conn_name].size()
-    return 0
+    if typeof(raw_tree_data[conn_name]) == TYPE_DICTIONARY:
+        return [raw_tree_data[conn_name]]
+    elif typeof(raw_tree_data[conn_name]) == TYPE_ARRAY:
+        return raw_tree_data[conn_name]
+    else:
+        print_debug("get_raw_connected_nodes: Connection %s is of an unhandled type: %s" % [conn_name, type_string(typeof(raw_tree_data[conn_name]))])
+        return []
+
+
+func num_connected_asset_nodes(conn_name: String) -> int:
+    if not connected_node_counts.has(conn_name):
+        return 0
+    return connected_node_counts[conn_name]
 
 func update_setting_value(setting_name: String, value: Variant) -> void:
     settings[setting_name] = value
     settings_changed.emit()
 
-func _num_connected_asset_nodes_full(conn_name: String) -> int:
-    if not connected_node_counts.has(conn_name):
-        return 0
-    return connected_node_counts[conn_name]
-
-func get_raw_connected_nodes(conn_name: String) -> Array:
-    if typeof(connections[conn_name]) == TYPE_DICTIONARY:
-        return [connections[conn_name]]
-    elif typeof(connections[conn_name]) == TYPE_ARRAY:
-        return connections[conn_name]
-    else:
-        print_debug("get_raw_connected_nodes: Connection %s is of an unhandled type: %s" % [conn_name, type_string(typeof(connections[conn_name]))])
-        return []
-
 
 func set_connection(conn_name: String, index: int, asset_node: HyAssetNode) -> void:
     if not connection_list.has(conn_name):
         connection_list.append(conn_name)
-        connected_node_counts[conn_name] = 1
+        connected_node_counts[conn_name] = 0
     var conn_key: String = "%s:%d" % [conn_name, index]
-    if connections.has(conn_name) and typeof(connections[conn_name]) == TYPE_DICTIONARY:
-        if index > 0:
-            print_debug("Index %s is greater than 0 on a single connection! (%s)" % [index, conn_name])
-            return
+    var was_set: = connected_asset_nodes.has(conn_key)
     connected_asset_nodes[conn_key] = asset_node
+    if not was_set:
+        connected_node_counts[conn_name] += 1
 
 func set_connection_count(conn_name: String, count: int) -> void:
     if not connection_list.has(conn_name):
@@ -91,7 +75,7 @@ func set_connection_count(conn_name: String, count: int) -> void:
 
 
 func append_node_to_connection(conn_name: String, asset_node: HyAssetNode) -> void:
-    if not has_inner_asset_nodes:
+    if shallow:
         print_debug("Trying to append node to a shallow asset node (%s)" % an_node_id)
         return
     if not connected_asset_nodes.has("%s:0" % conn_name):
@@ -105,7 +89,7 @@ func append_node_to_connection(conn_name: String, asset_node: HyAssetNode) -> vo
         connected_node_counts[conn_name] = next_index + 1
 
 func append_nodes_to_connection(conn_name: String, asset_nodes: Array[HyAssetNode]) -> void:
-    if not has_inner_asset_nodes:
+    if shallow:
         print_debug("Trying to append nodes to a shallow asset node (%s)" % an_node_id)
         return
     if not connection_list.has(conn_name):
@@ -115,7 +99,7 @@ func append_nodes_to_connection(conn_name: String, asset_nodes: Array[HyAssetNod
     connected_node_counts[conn_name] = asset_nodes.size()
 
 func remove_node_from_connection(conn_name: String, asset_node: HyAssetNode) -> void:
-    if not has_inner_asset_nodes:
+    if shallow:
         print_debug("Trying to remove node from a shallow asset node (%s)" % an_node_id)
         return
     var found_at_idx: int = -1
@@ -130,7 +114,7 @@ func remove_node_from_connection(conn_name: String, asset_node: HyAssetNode) -> 
     remove_node_from_connection_at(conn_name, found_at_idx)
 
 func pop_node_from_connection(conn_name: String) -> HyAssetNode:
-    if not has_inner_asset_nodes:
+    if shallow:
         print_debug("Trying to pop node from a shallow asset node (%s)" % an_node_id)
         return null
     if not connection_list.has(conn_name):
@@ -143,7 +127,7 @@ func pop_node_from_connection(conn_name: String) -> HyAssetNode:
     return popped_node
 
 func remove_node_from_connection_at(conn_name: String, at_index: int) -> void:
-    if not has_inner_asset_nodes:
+    if shallow:
         print_debug("Trying to remove node from a shallow asset node (%s) at index %s" % [an_node_id, at_index])
         return
     if at_index < 0 or at_index >= connected_node_counts[conn_name]:
@@ -194,27 +178,23 @@ func _reindex_connection(conn_name: String, max_index: int = -1, insert_nodes: D
 
 ## Given a new NodeID returns a new copy with all the same data but no connected asset nodes
 func get_shallow_copy(new_id: String) -> HyAssetNode:
-    if not has_inner_asset_nodes:
-        push_error("Trying to get a shallow copy of an unpopulated asset node (%s)" % an_node_id)
-        return null
-
     var new_asset_node: = HyAssetNode.new()
     new_asset_node.an_node_id = new_id
     new_asset_node.an_type = an_type
-    new_asset_node.an_name = an_name
     new_asset_node.title = title
+    new_asset_node.default_title = default_title
     new_asset_node.comment = comment
     new_asset_node.settings = settings.duplicate_deep()
     new_asset_node.connection_list = connection_list.duplicate()
     for conn_name in connection_list:
         new_asset_node.connected_node_counts[conn_name] = 0
-    new_asset_node.has_inner_asset_nodes = true
+    # it's a shallow copy, but it doesn't have unpopulated connections
+    new_asset_node.shallow = false
     return new_asset_node
-
     
 
 func get_connected_node(conn_name: String, index: int) -> HyAssetNode:
-    if not has_inner_asset_nodes:
+    if shallow:
         print_debug("Trying to retrieve inner nodes of a shallow asset node (%s)" % an_node_id)
         return null
     if not connection_list.has(conn_name):
@@ -223,7 +203,7 @@ func get_connected_node(conn_name: String, index: int) -> HyAssetNode:
     return connected_asset_nodes["%s:%d" % [conn_name, index]]
 
 func get_all_connected_nodes(conn_name: String) -> Array[HyAssetNode]:
-    if not has_inner_asset_nodes:
+    if shallow:
         print_debug("Trying to retrieve inner nodes of a shallow asset node (%s)" % an_node_id)
         return []
     if not connection_list.has(conn_name):
@@ -271,7 +251,7 @@ func serialize_within_set(schema: AssetNodesSchema, gn_lookup: Dictionary[String
     return serialize_me(schema, gn_lookup, included_asset_nodes)
 
 func serialize_me(schema: AssetNodesSchema, gn_lookup: Dictionary[String, GraphNode], included_asset_nodes: Array[HyAssetNode] = []) -> Dictionary:
-    if not has_inner_asset_nodes:
+    if shallow:
         print_debug("Serializing unpopulated asset node (%s)" % an_node_id)
         return raw_tree_data.duplicate(true)
     

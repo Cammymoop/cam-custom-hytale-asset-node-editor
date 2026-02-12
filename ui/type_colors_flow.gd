@@ -8,7 +8,7 @@ const TypeColorButton = preload("res://ui/type_color_button.gd")
 var type_color_styleboxes: Dictionary = {}
 
 func _ready() -> void:
-    var graph_edit: AssetNodeGraphEdit = get_tree().current_scene.find_child("AssetNodeGraphEdit")
+    var graph_edit: CHANE_AssetNodeGraphEdit = get_tree().current_scene.find_child("ANGraphEdit")
     assert(graph_edit != null, "Type colors flow: Graph Edit not found")
     setup()
 
