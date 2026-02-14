@@ -58,6 +58,7 @@ func load_copied_nodes_from_clipboard_str(graph_edit: CHANE_AssetNodeGraphEdit, 
 
     graph_edit.in_graph_copy_id = parsed_data["copy_id"]
     graph_edit.copied_external_ans = all_deserialized_ans
+    graph_edit.copied_external_node_metadata = parsed_data["included_metadata"]["node_metadata"]
     graph_edit.clipboard_was_from_external = true
     
     load_copied_groups(parsed_data["included_metadata"].get("groups", []), graph_edit)
@@ -104,6 +105,7 @@ func serialize_copied_nodes(graph_edit: CHANE_AssetNodeGraphEdit) -> String:
             copied_groups.append(ge)
 
     var center_of_mass: Vector2 = Util.average_graph_element_pos_offset(graph_edit.copied_nodes)
+    prints("first ge pos: %s, center of mass: %s" % [graph_edit.copied_nodes[0].position_offset, center_of_mass])
     var serialized_groups: Array[Dictionary] = graph_edit.serialize_groups(copied_groups, false, center_of_mass)
     var serialized_data: Dictionary = {
         "what_is_this": "Clipboard data from Cam Hytale Asset Node Editor",
@@ -116,6 +118,7 @@ func serialize_copied_nodes(graph_edit: CHANE_AssetNodeGraphEdit) -> String:
             "groups": serialized_groups,
         }
     }
+    prints("serialized node metadata: %s" % [serialized_data["included_metadata"]["node_metadata"]])
 
     var copied_an_set: Array[HyAssetNode] = graph_edit.get_an_set_for_graph_nodes(copied_gns)
     var copied_an_roots: Array[HyAssetNode] = graph_edit.get_an_roots_within_set(copied_an_set)

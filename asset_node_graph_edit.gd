@@ -98,6 +98,7 @@ var copied_nodes_ans: Array[HyAssetNode] = []
 var clipboard_was_from_cut: bool = false
 var clipboard_was_from_external: bool = false
 var copied_external_ans: Array[HyAssetNode] = []
+var copied_external_node_metadata: Dictionary = {}
 var copied_external_groups: Array[Dictionary] = []
 var in_graph_copy_id: String = ""
 
@@ -853,6 +854,7 @@ func discard_copied_nodes() -> void:
             if an.an_node_id in asset_node_meta:
                 asset_node_meta.erase(an.an_node_id)
     copied_external_ans.clear()
+    copied_external_node_metadata.clear()
     copied_external_groups.clear()
     in_graph_copy_id = ""
 
@@ -994,9 +996,10 @@ func paste_from_external() -> void:
     var old_json_scale: = json_positions_scale
     json_positions_scale = Vector2.ONE
     var screen_center_pos: Vector2 = global_pos_to_position_offset(get_viewport_rect().size / 2)
+    prints("screen center pos offset: %s" % [screen_center_pos])
     var an_roots: Array[HyAssetNode] = get_an_roots_within_set(copied_external_ans)
     floating_tree_roots.append_array(an_roots)
-    var added_gns: = make_and_position_graph_nodes_for_trees(an_roots, false, screen_center_pos)
+    var added_gns: = make_and_position_graph_nodes_for_trees(an_roots, false, copied_external_node_metadata, screen_center_pos)
     var added_ges: Array[GraphElement] = []
     added_ges.append_array(added_gns)
     json_positions_scale = old_json_scale
@@ -1146,9 +1149,9 @@ func create_graph_from_parsed_data() -> void:
     
     await get_tree().process_frame
 
-func get_node_position_from_meta(node_id: String) -> Vector2:
-    var node_meta: Dictionary = asset_node_meta.get(node_id, {}) as Dictionary
-    var meta_pos: Dictionary = node_meta.get("$Position", {"$x": relative_root_position.x, "$y": relative_root_position.y - 560})
+func get_node_position_from_meta(node_id: String, node_meta: Dictionary) -> Vector2:
+    var this_node_meta: Dictionary = node_meta.get(node_id, {}) as Dictionary
+    var meta_pos: Dictionary = this_node_meta.get("$Position", {"$x": relative_root_position.x, "$y": relative_root_position.y})
     return Vector2(meta_pos["$x"], meta_pos["$y"])
 
 func init_asset_node(asset_node: HyAssetNode, with_meta_data: bool = false, meta_data: Dictionary = {}) -> void:
@@ -1330,18 +1333,21 @@ func make_json_groups(group_datas: Array[Dictionary]) -> void:
         deserialize_and_add_group_and_attach_graph_nodes(group_data)
     refresh_graph_elements_in_frame_status()
     
-func make_and_position_graph_nodes_for_trees(an_roots: Array[HyAssetNode], positions_as_loaded: bool, add_offset: Vector2 = Vector2.ZERO) -> Array[CustomGraphNode]:
-    var manually_position: bool = positions_as_loaded and not use_json_positions
+func make_and_position_graph_nodes_for_trees(an_roots: Array[HyAssetNode], existing_metadata: bool, with_metadata: Dictionary = {}, add_offset: Vector2 = Vector2.ZERO) -> Array[CustomGraphNode]:
+    var manually_position: bool = existing_metadata and not use_json_positions
+    var an_meta: Dictionary = asset_node_meta if existing_metadata else with_metadata
     var base_tree_pos: = Vector2(0, 100)
     var all_added_gns: Array[CustomGraphNode] = []
     for tree_root_node in an_roots:
-        var new_graph_nodes: Array[CustomGraphNode] = new_graph_nodes_for_tree(tree_root_node)
+        var new_graph_nodes: Array[CustomGraphNode] = new_graph_nodes_for_tree(tree_root_node, an_meta)
         all_added_gns.append_array(new_graph_nodes)
         for new_gn in new_graph_nodes:
             add_child(new_gn, true)
             if manually_position:
+                prints("manually positioning upward")
                 new_gn.position_offset = Vector2(0, -500)
             if add_offset:
+                prints("adding offset: %s to %s, new pos: %s" % [add_offset, new_gn.position_offset, new_gn.position_offset + add_offset])
                 new_gn.position_offset += add_offset
         
         if manually_position:
@@ -1350,7 +1356,7 @@ func make_and_position_graph_nodes_for_trees(an_roots: Array[HyAssetNode], posit
         else:
             connect_children(new_graph_nodes[0])
         
-        if not positions_as_loaded:
+        if not existing_metadata:
             snap_ges(new_graph_nodes)
     return all_added_gns
 
@@ -1406,19 +1412,19 @@ func move_and_connect_children(asset_node_id: String, pos: Vector2) -> int:
     
     return int(child_pos.y)
 
-func new_graph_nodes_for_tree(tree_root_node: HyAssetNode) -> Array[CustomGraphNode]:
-    return _recursive_new_graph_nodes(tree_root_node, tree_root_node)
+func new_graph_nodes_for_tree(tree_root_node: HyAssetNode, node_metadata: Dictionary) -> Array[CustomGraphNode]:
+    return _recursive_new_graph_nodes(tree_root_node, tree_root_node, node_metadata)
 
-func _recursive_new_graph_nodes(at_asset_node: HyAssetNode, root_asset_node: HyAssetNode) -> Array[CustomGraphNode]:
+func _recursive_new_graph_nodes(at_asset_node: HyAssetNode, root_asset_node: HyAssetNode, node_metadata: Dictionary) -> Array[CustomGraphNode]:
     var new_graph_nodes: Array[CustomGraphNode] = []
 
-    var this_gn: = new_graph_node(at_asset_node, false)
+    var this_gn: = new_graph_node(at_asset_node, false, false, node_metadata)
     new_graph_nodes.append(this_gn)
 
     for conn_name in get_graph_connections_for(this_gn):
         var connected_nodes: Array[HyAssetNode] = get_graph_connected_asset_nodes(this_gn, conn_name)
         for connected_asset_node in connected_nodes:
-            new_graph_nodes.append_array(_recursive_new_graph_nodes(connected_asset_node, root_asset_node))
+            new_graph_nodes.append_array(_recursive_new_graph_nodes(connected_asset_node, root_asset_node, node_metadata))
     return new_graph_nodes
 
 func get_graph_connections_for(graph_node: CustomGraphNode) -> Array[String]:
@@ -1523,7 +1529,8 @@ func update_group_theme(_group: GraphFrame) -> void:
     # they just have specific color names set as their accent color
     pass
 
-func new_graph_node(asset_node: HyAssetNode, newly_created: bool) -> CustomGraphNode:
+func new_graph_node(asset_node: HyAssetNode, newly_created: bool, existing_metadata: bool = true, node_metadata: Dictionary = {}) -> CustomGraphNode:
+    var node_meta: Dictionary = asset_node_meta if existing_metadata else node_metadata
     var graph_node: CustomGraphNode = null
     var is_special: = should_be_special_gn(asset_node)
     var settings_syncer: SettingsSyncer = null
@@ -1728,7 +1735,7 @@ func new_graph_node(asset_node: HyAssetNode, newly_created: bool) -> CustomGraph
     get_parent().remove_child(graph_node)
     
     if use_json_positions:
-        var meta_pos: = get_node_position_from_meta(asset_node.an_node_id) * json_positions_scale
+        var meta_pos: = get_node_position_from_meta(asset_node.an_node_id, node_meta) * json_positions_scale
         graph_node.position_offset = meta_pos - relative_root_position
     
     return graph_node
