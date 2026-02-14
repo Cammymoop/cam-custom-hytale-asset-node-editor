@@ -2377,7 +2377,7 @@ func get_value_set_values(value_set: String) -> Array:
             "DistanceCurve": { "value_type": "Curve", "multi": false, "force_node_type": "ManualCurve" },
             "WeightedProps": { "value_type": "WeightedClusterProp", "multi": true },
             "Scanner": { "value_type": "Scanner", "multi": false },
-            "ColumnProp": { "value_type": "Prop", "multi": false, "force_node_type": "ColumnProp" },
+            "Pattern": { "value_type": "Pattern", "multi": false },
         }
     },
     "UnionProp": {
