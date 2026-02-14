@@ -249,10 +249,11 @@ func on_popup_menu_all_closed() -> void:
     grab_focus()
 
 func on_new_file_type_chosen(workspace_id: String) -> void:
+    prints("on_new_file_type_chosen", unedited, all_asset_nodes.size())
     new_file_with_prompt(workspace_id)
 
 func new_file_with_prompt(workspace_id: String) -> void:
-    if unedited or all_asset_nodes.size() < 2:
+    if unedited or all_asset_nodes.size() <= 1:
         new_file_real(workspace_id)
     else:
         var prompt_text: = "Do you want to save the current file before creating a new file?"
@@ -1344,10 +1345,8 @@ func make_and_position_graph_nodes_for_trees(an_roots: Array[HyAssetNode], exist
         for new_gn in new_graph_nodes:
             add_child(new_gn, true)
             if manually_position:
-                prints("manually positioning upward")
                 new_gn.position_offset = Vector2(0, -500)
             if add_offset:
-                prints("adding offset: %s to %s, new pos: %s" % [add_offset, new_gn.position_offset, new_gn.position_offset + add_offset])
                 new_gn.position_offset += add_offset
         
         if manually_position:

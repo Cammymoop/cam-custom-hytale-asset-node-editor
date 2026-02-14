@@ -28,8 +28,8 @@ func create_buttons() -> void:
         button_container.add_child(choose_type_btn, true)
 
 func choose_type_btn_pressed(workspace_id: String) -> void:
-    file_type_chosen.emit(workspace_id)
     closing.emit()
+    file_type_chosen.emit(workspace_id)
 
 func _on_cancel_btn_pressed() -> void:
     closing.emit()
