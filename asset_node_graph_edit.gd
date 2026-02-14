@@ -245,7 +245,7 @@ func on_new_file_type_chosen(workspace_id: String) -> void:
     new_file_with_prompt(workspace_id)
 
 func new_file_with_prompt(workspace_id: String) -> void:
-    if unedited or all_asset_nodes.size() < 2:
+    if unedited or all_asset_nodes.size() <= 1:
         new_file_real(workspace_id)
     else:
         var prompt_text: = "Do you want to save the current file before creating a new file?"
