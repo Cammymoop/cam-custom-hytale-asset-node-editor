@@ -1027,7 +1027,7 @@ func paste_from_external() -> void:
     create_undo_connection_change_step()
     discard_copied_nodes()
 
-func add_nodes_inside_to_groups(groups: Array[GraphFrame], ges: Array[GraphElement], with_undo: bool) -> void:
+func add_nodes_inside_to_groups(groups: Array[GraphFrame], ges: Array[GraphElement], with_undo: bool, empty_no_shrink: bool = true) -> void:
     var group_rects: Array[Rect2] = []
     for group in groups:
         group_rects.append(get_pos_offset_rect(group))
@@ -1055,6 +1055,10 @@ func add_nodes_inside_to_groups(groups: Array[GraphFrame], ges: Array[GraphEleme
                         "member": graph_element,
                     })
                     break
+    if empty_no_shrink:
+        for the_group in groups:
+            if get_attached_nodes_of_frame(the_group.name).size() == 0:
+                the_group.autoshrink_enabled = false
     add_group_relations(added_group_relations, with_undo)
 
 func _add_pasted_nodes(ges: Array[GraphElement], asset_node_set: Array[HyAssetNode], make_duplicates: bool) -> Array[GraphElement]:
@@ -3170,6 +3174,7 @@ func deserialize_and_add_group_and_attach_graph_nodes(group_data: Dictionary) ->
     var ges_to_attach: Array[GraphElement] = []
     var new_group_rect: = new_group.get_rect()
     new_group_rect.position = new_group.position_offset
+    var num_added: int = 0
     for child in get_children():
         if child == new_group:
             continue
@@ -3179,13 +3184,17 @@ func deserialize_and_add_group_and_attach_graph_nodes(group_data: Dictionary) ->
             var child_rect: Rect2 = child.get_rect().grow(-8)
             child_rect.position = child.position_offset
             if new_group_rect.encloses(child_rect):
+                num_added += 1
                 ges_to_attach.append(child)
         elif child is CustomGraphNode:
             var child_hbox_rect: Rect2 = child.get_titlebar_hbox().get_rect()
             child_hbox_rect.position = child.position_offset
             var child_titlebar_center: Vector2 = child_hbox_rect.get_center()
             if new_group_rect.has_point(child_titlebar_center):
+                num_added += 1
                 ges_to_attach.append(child)
+    if num_added == 0:
+        new_group.autoshrink_enabled = false
     add_ges_to_group(ges_to_attach, new_group)
     return new_group
 
@@ -3248,7 +3257,6 @@ func _make_new_group(group_title: String = "Group", group_size: Vector2 = Vector
     new_group.name = new_graph_node_name("Group")
     new_group.resizable = true
     new_group.autoshrink_enabled = ANESettings.default_is_group_shrinkwrap
-    new_group.autoshrink_enabled = false
     new_group.size = group_size
     _set_group_title(new_group, group_title)
     
