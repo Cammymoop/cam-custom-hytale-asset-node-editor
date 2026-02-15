@@ -122,7 +122,7 @@ func save_custom_theme(message_callback: Callable) -> void:
     if not file:
         push_error("Error opening custom theme file for writing: %s" % CUSTOM_THEME_FILE_PATH)
         print_debug("Error opening custom theme file for writing: %s" % CUSTOM_THEME_FILE_PATH)
-        %ToastMessageContainer.show_toast_message("Error saving custom theme colors")
+        GlobalToaster.show_toast_message("Error saving custom theme colors")
         return
     file.store_string(JSON.stringify(custom_theme_dict))
     message_callback.call("Custom Colors Saved")

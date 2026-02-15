@@ -2,6 +2,36 @@ extends Node
 class_name CHANE_HyAssetNodeSerializer
 
 
+class MetadataKeys:
+    const NodeId: String = "$NodeId"
+    
+    const NodeEditorMetadata: String = "$NodeEditorMetadata"
+
+    const NodeMetaPosition: String = "$Position"
+    const NodeMetaPosX: String = "$x"
+    const NodeMetaPosY: String = "$y"
+    const NodeMetaTitle: String = "$Title"
+
+    const NodeComment: String = "$Comment"
+
+    const NodesMeta: String = "$Nodes"
+    const WorkspaceId: String = "$WorkspaceID"
+    const Groups: String = "$Groups"
+    const Comments: String = "$Comments"
+    const Links: String = "$Links"
+    const FloatingRoots: String = "$FloatingNodes"
+    
+    const GroupName: String = "$name"
+    const GroupPosition: String = "$Position"
+    const GroupPosX: String = "$x"
+    const GroupPosY: String = "$y"
+    const GroupWidth: String = "$width"
+    const GroupHeight: String = "$height"
+    # CHANE custom
+    const CHANEGroupAccentColor: String = "$AccentColor"
+    
+    const CHANE: String = "$CHANE"
+
 class SingleParseResult:
     var asset_node: HyAssetNode = null
     var success: bool = true
@@ -30,8 +60,10 @@ class TreeParseResult:
             if not first_failure_at and other_result.first_failure_at:
                 first_failure_at = other_result.first_failure_at
 
+var serialized_pos_scale: Vector2 = Vector2.ONE
+var serialized_pos_offset: Vector2 = Vector2.ZERO
 
-func get_unique_an_id(prefix: String) -> String:
+static func get_unique_an_id(prefix: String) -> String:
     return "%s-%s" % [prefix, Util.unique_id_string()]
 
 func get_new_id_for_type(asset_node_type: String) -> String:
@@ -54,11 +86,14 @@ func failed_leaf_result(single_result: SingleParseResult) -> TreeParseResult:
     result.first_failure_at = single_result
     return result
 
+# Deserializing
+
 func parse_asset_node_tree(old_style: bool, asset_node_data: Dictionary, external_metadata: Dictionary, inference_hints: Dictionary) -> TreeParseResult:
+    # Note: external_metadata only needed currently for titles (non-old-style)
     var single_result: = parse_asset_node_shallow(old_style, asset_node_data, external_metadata, inference_hints)
     if not single_result.success:
-        print_debug("Failed to parse asset node %s" % asset_node_data.get("$NodeId", ""))
-        push_error("Failed to parse asset node %s" % asset_node_data.get("$NodeId", ""))
+        print_debug("Failed to parse asset node %s" % asset_node_data.get(MetadataKeys.NodeId, ""))
+        push_error("Failed to parse asset node %s" % asset_node_data.get(MetadataKeys.NodeId, ""))
         return failed_leaf_result(single_result)
 
     var cur_result: = TreeParseResult.new()
@@ -81,6 +116,7 @@ func parse_asset_node_tree(old_style: bool, asset_node_data: Dictionary, externa
     return cur_result
 
 func parse_asset_node_shallow(old_style: bool, asset_node_data: Dictionary, external_metadata: Dictionary, inference_hints: Dictionary) -> SingleParseResult:
+    # Note: external_metadata only needed currently for titles (non-old-style)
     if not asset_node_data:
         print_debug("Asset node data is empty")
         return single_failed_result()
@@ -103,35 +139,35 @@ func parse_asset_node_shallow(old_style: bool, asset_node_data: Dictionary, exte
             return single_failed_result()
         else:
             result.is_existing_node_id = false
-            asset_node_data["$NodeId"] = get_unique_an_id(SchemaManager.schema.get_id_prefix_for_node_type(inferred_node_type))
+            asset_node_data[MetadataKeys.NodeId] = get_unique_an_id(SchemaManager.schema.get_id_prefix_for_node_type(inferred_node_type))
     
     var asset_node_type: String = inference_hints.get("asset_node_type", "")
     if not asset_node_type:
-        if not asset_node_data.get("$NodeId", ""):
+        if not asset_node_data.get(MetadataKeys.NodeId, ""):
             result.is_existing_node_id = false
             var type_key: String = asset_node_data.get("Type", "NO_TYPE_KEY")
             var output_value_type: String = inference_hints.get("output_value_type", "")
             asset_node_type = SchemaManager.schema.resolve_asset_node_type(type_key, output_value_type)
             if not asset_node_type or asset_node_type == "Unknown":
-                push_warning("No $NodeId from node data, fallback using output value type and 'Type' key also failed, the node will have an Unknown type")
+                push_warning("No %s from node data, fallback using output value type and 'Type' key also failed, the node will have an Unknown type" % MetadataKeys.NodeId)
                 return parse_schemaless_asset_node(asset_node_data, external_metadata)
 
-            asset_node_data["$NodeId"] = get_unique_an_id(SchemaManager.schema.get_id_prefix_for_node_type(asset_node_type))
+            asset_node_data[MetadataKeys.NodeId] = get_unique_an_id(SchemaManager.schema.get_id_prefix_for_node_type(asset_node_type))
         else:
-            asset_node_type = SchemaManager.schema.infer_asset_node_type_from_id(asset_node_data["$NodeId"])
+            asset_node_type = SchemaManager.schema.infer_asset_node_type_from_id(asset_node_data[MetadataKeys.NodeId])
 
     if asset_node_type == "Unknown":
         return parse_schemaless_asset_node(asset_node_data, external_metadata)
     
-    assert(asset_node_data.get("$NodeId", ""), "NodeId is required (should have been implicitly set if is old-style)")
+    assert(asset_node_data.get(MetadataKeys.NodeId, ""), "NodeId is required (should have been implicitly set if is old-style)")
     
     result.asset_node = HyAssetNode.new()
     var asset_node: = result.asset_node
-    asset_node.an_node_id = asset_node_data["$NodeId"]
+    asset_node.an_node_id = asset_node_data[MetadataKeys.NodeId]
     if asset_node_type:
         asset_node.an_type = asset_node_type
     else:
-        asset_node.an_type = SchemaManager.schema.infer_asset_node_type_from_id(asset_node_data["$NodeId"])
+        asset_node.an_type = SchemaManager.schema.infer_asset_node_type_from_id(asset_node_data[MetadataKeys.NodeId])
     
     var an_schema: Dictionary = {}
     if asset_node.an_type and asset_node.an_type != "Unknown":
@@ -164,7 +200,7 @@ func parse_schemaless_asset_node(asset_node_data: Dictionary, external_metadata:
     asset_node.raw_tree_data = asset_node_data.duplicate()
     result.asset_node = asset_node
 
-    asset_node.an_node_id = asset_node_data.get("$NodeId", "")
+    asset_node.an_node_id = asset_node_data.get(MetadataKeys.NodeId, "")
     if not asset_node.an_node_id:
         asset_node.an_node_id = get_new_id_for_schemaless_node()
         result.is_existing_node_id = false
@@ -192,16 +228,18 @@ func setup_base_info_and_settings(asset_node: HyAssetNode, node_data: Dictionary
     else:
         asset_node.default_title = SchemaManager.schema.get_node_type_default_name(asset_node.an_type)
 
-    if ext_meta.get("$Title", ""):
-        asset_node.title = str(ext_meta["$Title"])
-    elif node_data.get("$Title", ""):
-        asset_node.title = str(node_data["$Title"])
+    if ext_meta.get(MetadataKeys.NodeMetaTitle, ""):
+        asset_node.title = str(ext_meta[MetadataKeys.NodeMetaTitle])
+    elif node_data.get(MetadataKeys.NodeMetaTitle, ""):
+        # legacy spot for title
+        asset_node.title = str(node_data[MetadataKeys.NodeMetaTitle])
 
     if not asset_node.title:
         asset_node.title = asset_node.default_title
     
-    if node_data.get("$Comment", ""):
-        asset_node.comment = str(node_data["$Comment"])
+    if node_data.get(MetadataKeys.NodeComment, ""):
+        # note: yes comments are stored in the node data not editor metadata
+        asset_node.comment = str(node_data[MetadataKeys.NodeComment])
     
     var connections_schema: Dictionary = an_schema.get("connections", {})
     for conn_name in connections_schema.keys():
@@ -301,3 +339,231 @@ static func debug_dump_tree_results(tree_result: TreeParseResult) -> void:
             continue
         print("  Failed Node: %s (%s :: %s)" % [result.asset_node, result.asset_node.an_node_id, result.asset_node.an_type])
         print("    Is existing node ID: %s" % result.is_existing_node_id)
+
+
+# Serializing
+
+func _node_meta_position(pos: Vector2) -> Dictionary:
+    return { MetadataKeys.NodeMetaPosX: pos.x, MetadataKeys.NodeMetaPosY: pos.y, }
+
+func get_serialize_scaled_pos(graph_pos: Vector2) -> Vector2:
+    return (graph_pos / serialized_pos_scale).round()
+
+func get_serialize_offset_scaled_pos(graph_pos: Vector2) -> Vector2:
+    return get_serialize_scaled_pos(graph_pos - serialized_pos_offset)
+
+
+func serialize_an_metadata_into(asset_node: HyAssetNode, graph_pos: Vector2, into_dict: Dictionary) -> void:
+    into_dict[asset_node.an_node_id] = serialize_an_metadata(asset_node, graph_pos)
+
+func serialize_an_metadata(asset_node: HyAssetNode, graph_pos: Vector2) -> Dictionary:
+    var an_meta: = {
+        MetadataKeys.NodeMetaPosition: _node_meta_position(get_serialize_offset_scaled_pos(graph_pos)),
+    }
+    if asset_node.title and asset_node.title != asset_node.default_title:
+        an_meta[MetadataKeys.NodeMetaTitle] = asset_node.title
+    return an_meta
+
+## Creates plain dictionary data in the hytale asset json format, mimicking the format used by the official asset node editor
+func serialize_entire_graph_as_asset(graph_edit: CHANE_AssetNodeGraphEdit) -> Dictionary:
+    # Make the reference position and scale is set up
+    serialized_pos_scale = graph_edit.json_positions_scale
+    serialized_pos_offset = graph_edit.relative_root_position
+    # The root asset node is also the root dictionary of the asset json format
+    var serialized_data: Dictionary = serialize_asset_node_tree(graph_edit.root_node)
+    # Floating trees are included in the node editor metadata
+    serialized_data[MetadataKeys.NodeEditorMetadata] = serialize_node_editor_metadata(graph_edit)
+    return serialized_data
+
+func serialize_multiple_an_trees(an_trees: Array[HyAssetNode]) -> Array[Dictionary]:
+    var serialized_an_trees: Array[Dictionary] = []
+    for tree_root in an_trees:
+        serialized_an_trees.append(serialize_asset_node_tree(tree_root))
+    return serialized_an_trees
+
+
+func serialize_node_editor_metadata(graph_edit: CHANE_AssetNodeGraphEdit) -> Dictionary:
+    var serialized_node_meta: Dictionary = {}
+    var root_gn: = graph_edit.get_root_graph_node()
+    if not root_gn:
+        push_error("Serialize Node Editor Metadata: Root node graph node not found")
+        return {}
+    var fallback_pos: = get_serialize_offset_scaled_pos(root_gn.position_offset - Vector2(200, 200))
+    
+    var an_owners: Dictionary[HyAssetNode, GraphNode] = {}
+    for gn in get_children():
+        if not gn is CustomGraphNode:
+            continue
+        if not gn.get_meta("is_special_gn", false):
+            var an_id: String = gn.get_meta("hy_asset_node_id", "")
+            assert(graph_edit.an_lookup.has(an_id), "Serialize Node Editor Metadata: Asset node not found for graph node %s with id %s" % [gn.name, an_id])
+            if graph_edit.an_lookup.has(an_id):
+                an_owners[graph_edit.an_lookup[an_id]] = gn
+        else:
+            for owned_an in gn.get_own_asset_nodes():
+                an_owners[owned_an] = gn
+
+    for an in graph_edit.all_asset_nodes:
+        if OS.has_feature("debug"):
+            if not an_owners.has(an):
+                push_error("Serialize Node Editor Metadata: Asset node %s not found in an_owners" % an.an_node_id)
+                print_debug("Serialize Node Editor Metadata: Asset node %s not found in an_owners" % an.an_node_id)
+
+        var owner_gn: GraphNode = an_owners.get(an, null)
+        if not owner_gn:
+            # Fallback in-case no position can be determinded
+            serialize_an_metadata_into(an, fallback_pos, serialized_node_meta)
+            continue
+        # Let the owning graph node determine the position to use
+        owner_gn.add_an_metadata_into(an, self, serialized_node_meta)
+
+    var serialized_metadata: Dictionary = {
+        MetadataKeys.NodesMeta: serialized_node_meta,
+    }
+
+    serialized_metadata[MetadataKeys.FloatingRoots] = serialize_multiple_an_trees(graph_edit.floating_tree_roots)
+
+    serialized_metadata[MetadataKeys.WorkspaceId] = graph_edit.hy_workspace_id
+    
+    serialized_metadata[MetadataKeys.Groups] = graph_edit.serialize_all_groups()
+    
+    # include other metadata we found in the file but don't do anything with
+    for other_key in graph_edit.all_meta.keys():
+        if serialized_metadata.has(other_key):
+            continue
+        serialized_metadata[other_key] = graph_edit.all_meta[other_key]
+    return serialized_metadata
+
+func serialize_graph_edit_groups(graph_edit: CHANE_AssetNodeGraphEdit) -> Array[Dictionary]:
+    return serialize_groups(graph_edit.get_all_groups())
+
+func serialize_groups(the_groups: Array[GraphFrame]) -> Array[Dictionary]:
+    var serialized_groups: Array[Dictionary] = []
+    for group in the_groups:
+        serialized_groups.append(serialize_group(group))
+    return serialized_groups
+
+func serialize_group(group: GraphFrame) -> Dictionary:
+    var adjusted_size: = get_serialize_scaled_pos(group.size)
+    var adjusted_pos: = get_serialize_offset_scaled_pos(group.position_offset)
+
+    var serialized_group: Dictionary = {
+        MetadataKeys.GroupName: group.title,
+        MetadataKeys.GroupPosition: {
+            MetadataKeys.GroupPosX: adjusted_pos.x,
+            MetadataKeys.GroupPosY: adjusted_pos.y,
+        },
+        MetadataKeys.GroupWidth: adjusted_size.x,
+        MetadataKeys.GroupHeight: adjusted_size.y,
+    }
+    if group.get_meta("has_custom_color", false):
+        serialized_group[MetadataKeys.CHANEGroupAccentColor] = group.get_meta("custom_color_name", "")
+    return serialized_group
+
+## Creates plain dictionary data for saving to json of the limited asset node tree from the given node passing through only nodes included in the included_asset_nodes set
+## returns an empty dictionary if the given asset node is not in the set
+func serialize_asset_node_tree_within_set(asset_node: HyAssetNode, included_asset_nodes: Array[HyAssetNode]) -> Dictionary:
+    if asset_node not in included_asset_nodes:
+        return {}
+    
+    return serialize_asset_node_tree(asset_node, included_asset_nodes)
+
+## Creates plain dictionary data for saving to json including the entire asset node tree from the given node
+## if included_asset_nodes is provided, the tree will stop at any nodes not included in the set and that subtree will be omitted
+func serialize_asset_node_tree(asset_node: HyAssetNode, included_asset_nodes: Array[HyAssetNode] = []) -> Dictionary:
+    if asset_node.shallow:
+        push_warning("Serializing unpopulated asset node (%s)" % asset_node.an_node_id)
+        print_debug("Serializing unpopulated asset node (%s)" % asset_node.an_node_id)
+        return asset_node.raw_tree_data.duplicate(true)
+    
+    var serialized_data: Dictionary = {MetadataKeys.NodeId: asset_node.an_node_id}
+    if asset_node.comment:
+        serialized_data[MetadataKeys.NodeComment] = asset_node.comment
+    
+    for other_key in asset_node.other_metadata.keys():
+        serialized_data[other_key] = asset_node.other_metadata[other_key]
+    
+    var an_type: String = asset_node.an_type
+    
+    if not an_type or an_type == "Unknown" or not SchemaManager.schema.node_schema.has(an_type):
+        print_debug("Warning: Serializing an asset node with unknown type: %s (%s)" % [an_type, asset_node.an_node_id])
+        push_warning("Warning: Serializing an asset node with unknown type: %s (%s)" % [an_type, asset_node.an_node_id])
+        serialized_data[MetadataKeys.CHANE] = { "no_schema": true }
+        # handling "Type" key
+        if "Type" in asset_node.raw_tree_data:
+            serialized_data["Type"] = asset_node.raw_tree_data["Type"]
+        # settings
+        for setting_key in asset_node.settings.keys():
+            serialized_data[setting_key] = asset_node.settings[setting_key]
+        # subtree
+        for conn_name in asset_node.connection_list:
+            var num_connected: = asset_node.num_connected_asset_nodes(conn_name)
+            if num_connected == 0:
+                continue
+
+            if num_connected > 1:
+                serialized_data[conn_name] = []
+                for connected_an in asset_node.get_all_connected_nodes(conn_name):
+                    if not included_asset_nodes or connected_an in included_asset_nodes:
+                        serialized_data[conn_name].append(serialize_asset_node_tree(connected_an, included_asset_nodes))
+            else:
+                var connected_an: = asset_node.get_connected_node(conn_name, 0)
+                if not included_asset_nodes or connected_an in included_asset_nodes:
+                    serialized_data[conn_name] = serialize_asset_node_tree(connected_an, included_asset_nodes)
+    else:
+        var an_schema: = SchemaManager.schema.node_schema[an_type]
+        
+        # handling "Type" key
+        var serialized_type_key: Variant = SchemaManager.schema.connection_type_node_type_lookup.find_key(an_type)
+        if serialized_type_key and serialized_type_key.split("|", false).size() > 1:
+            serialized_data["Type"] = serialized_type_key.split("|")[1]
+
+        # settings
+        var an_settings: = asset_node.settings
+        for setting_key in an_schema.get("settings", {}).keys():
+            var gd_type: int = an_schema["settings"][setting_key]["gd_type"]
+            var sub_gd_type: int = an_schema["settings"][setting_key].get("array_gd_type", -1)
+            var serialized_value: Variant = serialize_individual_setting_data(an_settings[setting_key], gd_type, sub_gd_type)
+            if serialized_value != null:
+                serialized_data[setting_key] = serialized_value
+
+        # subtree
+        for conn_name in an_schema.get("connections", {}).keys():
+            var num_connected: = asset_node.num_connected_asset_nodes(conn_name)
+            if num_connected == 0:
+                # default behavior is to not include empty connections as keys
+                continue
+            var connected_nodes: Array[Dictionary] = []
+            for connected_an in asset_node.get_all_connected_nodes(conn_name):
+                if not included_asset_nodes or connected_an in included_asset_nodes:
+                    connected_nodes.append(serialize_asset_node_tree(connected_an, included_asset_nodes))
+
+            if an_schema["connections"][conn_name].get("multi", false):
+                serialized_data[conn_name] = connected_nodes
+            else:
+                serialized_data[conn_name] = connected_nodes[0]
+
+    return serialized_data
+
+func serialize_individual_setting_data(raw_value: Variant, gd_type: int, sub_gd_type: int = -1) -> Variant:
+    if gd_type == TYPE_STRING:
+        if str(raw_value) == "":
+            return null
+    elif gd_type == TYPE_BOOL:
+        return bool(raw_value)
+    elif gd_type == TYPE_INT:
+        if typeof(raw_value) == TYPE_FLOAT:
+            return roundi(raw_value)
+        elif typeof(raw_value) == TYPE_STRING:
+            return roundi(float(raw_value))
+    elif gd_type == TYPE_ARRAY:
+        if sub_gd_type == TYPE_INT and typeof(raw_value) == TYPE_ARRAY:
+            var arr: Array[int] = []
+            for i in raw_value.size():
+                if typeof(raw_value[i]) == TYPE_INT:
+                    arr.append(raw_value[i])
+                else:
+                    arr.append(roundi(float(raw_value[i])))
+            return arr
+
+    return raw_value

@@ -26,21 +26,17 @@ func update_graph_edit_theme() -> void:
     var graph_edit: CHANE_AssetNodeGraphEdit = get_tree().current_scene.find_child("ANGraphEdit")
     graph_edit.update_all_ges_themes()
 
-func show_toast_message(message: String) -> void:
-    %ToastMessageContainer.show_toast_message(message)
-    
-
 func on_save_custom_theme() -> void:
-    TypeColors.save_custom_theme(show_toast_message)
+    TypeColors.save_custom_theme(GlobalToaster.show_toast_message)
     update_theme()
 
 func on_load_custom_theme() -> void:
-    TypeColors.load_custom_theme(show_toast_message)
+    TypeColors.load_custom_theme(GlobalToaster.show_toast_message)
     reset_theme_editor()
     update_theme()
 
 func on_reset_theme_to_default() -> void:
-    TypeColors.reset_theme_to_default(show_toast_message)
+    TypeColors.reset_theme_to_default(GlobalToaster.show_toast_message)
     reset_theme_editor()
     update_theme()
 

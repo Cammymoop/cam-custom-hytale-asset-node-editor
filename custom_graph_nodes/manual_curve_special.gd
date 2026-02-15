@@ -68,6 +68,14 @@ func _ready() -> void:
         export_as_edit.get_parent().hide()
     export_as_edit.focus_exited.connect(check_show_export_as)
 
+# Position serialization for all owned asset nodes
+func add_an_metadata_into(for_an: HyAssetNode, serializer: CHANE_HyAssetNodeSerializer, into_dict: Dictionary) -> void:
+    if for_an == asset_node:
+        serializer.serialize_an_metadata_into(for_an, position_offset, into_dict)
+    if OS.has_feature("debug"):
+        var my_ans: = get_own_asset_nodes()
+        assert(for_an in my_ans, "for_an %s not in my_ans %s" % [for_an.an_node_id, my_ans.map(func(an): return an.an_node_id)])
+
 # REQUIRED METHODS FOR SPECIAL GRAPH NODES::
 
 func setup_ports() -> void:

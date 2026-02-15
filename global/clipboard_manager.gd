@@ -3,6 +3,8 @@ extends Node
 var enable_system_clipboard: = true
 var pretty_print_json: = true
 
+@onready var NODE_ID_KEY: String = CHANE_HyAssetNodeSerializer.MetadataKeys.NodeId
+
 func _ready() -> void:
     if not DisplayServer.has_feature(DisplayServer.FEATURE_CLIPBOARD):
         if enable_system_clipboard:
@@ -37,6 +39,10 @@ func load_copied_nodes_from_clipboard_str(graph_edit: CHANE_AssetNodeGraphEdit, 
     var parsed_data: Dictionary = parse_clipboard_data(clipboard_data)
     if not parsed_data:
         return false
+    if graph_edit.in_graph_copy_id == parsed_data["copy_id"] and not graph_edit.clipboard_was_from_external:
+        # This clipboard data is from the graph edit's current internal copy operation
+        return false
+
     if not parsed_data.has("included_metadata") or not parsed_data["included_metadata"].has("node_metadata"):
         print_debug("Clipboard data does not have included node metadata")
         return false
@@ -44,7 +50,8 @@ func load_copied_nodes_from_clipboard_str(graph_edit: CHANE_AssetNodeGraphEdit, 
         print_debug("Clipboard data does not have asset node data")
         return false
 
-    make_incoming_nodeids_unique(parsed_data, graph_edit)
+    # re-roll all the ids from the clipboard data to ensure that they are unique
+    make_incoming_nodeids_unique(parsed_data)
     var all_tree_results: = deserialize_clipboard_data_roots(parsed_data, graph_edit)
 
     var all_deserialized_ans: Array[HyAssetNode] = []
@@ -121,22 +128,22 @@ func serialize_copied_nodes(graph_edit: CHANE_AssetNodeGraphEdit) -> String:
     var copied_an_set: Array[HyAssetNode] = graph_edit.get_an_set_for_graph_nodes(copied_gns)
     var copied_an_roots: Array[HyAssetNode] = graph_edit.get_an_roots_within_set(copied_an_set)
     for copied_an_root in copied_an_roots:
-        var serialized_tree: = copied_an_root.serialize_within_set(SchemaManager.schema, graph_edit.gn_lookup, copied_an_set)
+        var serialized_tree: = graph_edit.serializer.serialize_asset_node_tree_within_set(copied_an_root, copied_an_set)
         serialized_data["asset_node_data"].append(serialized_tree)
     return JSON.stringify(serialized_data, "  " if pretty_print_json else "", false)
 
-func make_incoming_nodeids_unique(parsed_clipboard: Dictionary, graph_edit: CHANE_AssetNodeGraphEdit) -> void:
+func make_incoming_nodeids_unique(parsed_clipboard: Dictionary) -> void:
     for root_data in parsed_clipboard["asset_node_data"]:
-        make_nodeid_unique_recursive(root_data, graph_edit, parsed_clipboard["included_metadata"]["node_metadata"])
+        make_nodeid_unique_recursive(root_data, parsed_clipboard["included_metadata"]["node_metadata"])
 
-func make_nodeid_unique_recursive(node_data: Dictionary, graph_edit: CHANE_AssetNodeGraphEdit, metadata_dict: Dictionary) -> void:
-    var old_id: String = node_data.get("$NodeId", "")
+func make_nodeid_unique_recursive(node_data: Dictionary, metadata_dict: Dictionary) -> void:
+    var old_id: String = node_data.get(NODE_ID_KEY, "")
     if not old_id:
-        push_error("Clipboard incoming Node data does not have a $NodeId")
+        push_error("Clipboard incoming Node data does not have a %s" % NODE_ID_KEY)
         return
     var id_prefix: String = old_id.substr(0, old_id.find("-"))
-    var new_id: String = graph_edit.get_unique_an_id(id_prefix)
-    node_data["$NodeId"] = new_id
+    var new_id: String = CHANE_HyAssetNodeSerializer.get_unique_an_id(id_prefix)
+    node_data[NODE_ID_KEY] = new_id
     if metadata_dict.has(old_id):
         metadata_dict[new_id] = metadata_dict[old_id]
         metadata_dict.erase(old_id)
@@ -145,8 +152,8 @@ func make_nodeid_unique_recursive(node_data: Dictionary, graph_edit: CHANE_Asset
         if node_data_key.begins_with("$"):
             continue
         if node_data[node_data_key] is Dictionary:
-            make_nodeid_unique_recursive(node_data[node_data_key], graph_edit, metadata_dict)
+            make_nodeid_unique_recursive(node_data[node_data_key], metadata_dict)
         elif node_data[node_data_key] is Array:
             for item in node_data[node_data_key]:
                 if item is Dictionary:
-                    make_nodeid_unique_recursive(item, graph_edit, metadata_dict)
+                    make_nodeid_unique_recursive(item, metadata_dict)

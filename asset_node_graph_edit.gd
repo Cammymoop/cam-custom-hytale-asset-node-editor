@@ -405,6 +405,13 @@ func new_file_metadata_setup() -> void:
         "$WorkspaceID": hy_workspace_id,
     }
 
+func get_root_graph_node() -> CustomGraphNode:
+    var gn: = gn_lookup.get(root_node.an_node_id, null) as CustomGraphNode
+    if not gn:
+        push_error("get_root_graph_node: Root graph node not found for root node %s" % root_node.an_node_id)
+        return null
+    return gn
+
 func set_root_node(new_root_node: HyAssetNode) -> void:
     root_node = new_root_node
     if root_node in floating_tree_roots:
@@ -2534,7 +2541,7 @@ func _on_requested_save_file(file_path: String) -> void:
 
 func save_to_json_file(file_path: String) -> void:
     _save_to_json_file(file_path)
-    %ToastMessageContainer.show_toast_message("Saved")
+    GlobalToaster.show_toast_message("Saved")
 
 func _save_to_json_file(file_path: String) -> void:
     var json_str: = get_asset_node_graph_json_str()
@@ -2547,155 +2554,23 @@ func _save_to_json_file(file_path: String) -> void:
     prints("Saved asset node graph to JSON file: %s" % file_path)
     finished_saving.emit()
 
-func find_parent_asset_node(an: HyAssetNode) -> HyAssetNode:
-    if an == root_node:
-        return null
-    var main_tree_result: = _find_parent_asset_node_in_tree(root_node, an)
-    if main_tree_result[0]:
-        return main_tree_result[1]
-    for floating_tree_root in floating_tree_roots:
-        if floating_tree_root == an:
-            return null
-        var floating_tree_result: = _find_parent_asset_node_in_tree(floating_tree_root, an)
-        if floating_tree_result[0]:
-            return floating_tree_result[1]
-    return null
-
-func _find_parent_asset_node_in_tree(current_an: HyAssetNode, looking_for_an: HyAssetNode) -> Array:
-    if current_an == looking_for_an:
-        return [true, null]
-    
-    var conn_names: Array[String] = current_an.connection_list
-    for conn_name in conn_names:
-        for connected_an in current_an.get_all_connected_nodes(conn_name):
-            var branch_result: = _find_parent_asset_node_in_tree(connected_an, looking_for_an)
-            if branch_result[0]:
-                if not branch_result[1]:
-                    return [true, current_an]
-                return branch_result
-    
-    return [false, null]
-
 func get_asset_node_graph_json_str() -> String:
-    var serialized_data: Dictionary = serialize_asset_node_graph()
+    sort_all_an_connections()
+    var serialized_data: Dictionary = serializer.serialize_entire_graph_as_asset(self)
     var json_str: = JSON.stringify(serialized_data, "  " if save_formatted_json else "", false)
     if not json_str:
-        push_error("Error serializing asset node graph")
+        push_error("Error stringifying asset json")
         return ""
     return json_str
 
-func serialize_asset_node_graph() -> Dictionary:
+func sort_all_an_connections() -> void:
     for an in all_asset_nodes:
         an.sort_connections_by_gn_pos(gn_lookup)
 
-    var serialized_data: Dictionary = root_node.serialize_me(SchemaManager.schema, gn_lookup)
-    serialized_data["$NodeEditorMetadata"] = serialize_node_editor_metadata()
-    
-    return serialized_data
-
-func _set_child_sorting_metadata(an: HyAssetNode) -> void:
-    var conn_names: Array[String] = an.connection_list
-    for conn_name in conn_names:
-        var connected_nodes: Array[HyAssetNode] = an.get_all_connected_nodes(conn_name)
-        for idx_local in connected_nodes.size():
-            connected_nodes[idx_local].set_meta("metadata_parent", an)
-            connected_nodes[idx_local].set_meta("metadata_index_local", idx_local)
-            _set_child_sorting_metadata(connected_nodes[idx_local])
-
-func serialize_node_editor_metadata() -> Dictionary:
-    var serialized_metadata: Dictionary = {}
-    serialized_metadata["$Nodes"] = {}
-    var root_gn: = gn_lookup.get(root_node.an_node_id, null) as GraphNode
-    if not root_gn:
-        push_error("Serialize Node Editor Metadata: Root node graph node not found")
-        return {}
-    var fallback_pos: = ((root_gn.position_offset - Vector2(200, 200)) / json_positions_scale).round()
-
-    var roots: Array[HyAssetNode] = [root_node]
-    roots.append_array(floating_tree_roots)
-    for root in roots:
-        root.set_meta("metadata_index_local", 0)
-        _set_child_sorting_metadata(root)
-
-    for an in all_asset_nodes:
-        var gn: = gn_lookup.get(an.an_node_id, null) as GraphNode
-        var gn_pos: Vector2 = fallback_pos
-        if gn:
-            gn_pos = (gn.position_offset / json_positions_scale).round()
-        else:
-            var parent_an: HyAssetNode = an
-            var parent_gn: GraphNode = null
-            while parent_gn == null and parent_an != null:
-                parent_an = parent_an.get_meta("metadata_parent", null)
-                if not parent_an:
-                    parent_gn = null
-                    break
-                parent_gn = gn_lookup.get(parent_an.an_node_id, null) as GraphNode
-            if parent_gn:
-                var my_idx_local: int = an.get_meta("metadata_index_local", 0)
-                var unadjusted_pos: = parent_gn.position_offset + Vector2(parent_gn.size.x + 100, 0)
-                unadjusted_pos += Vector2.ONE * 10 * my_idx_local
-                gn_pos = (unadjusted_pos / json_positions_scale).round()
-        var node_meta_stuff: Dictionary = {
-            "$Position": {
-                "$x": gn_pos.x,
-                "$y": gn_pos.y,
-            },
-        }
-        if an.title:
-            node_meta_stuff["$Title"] = an.title
-        serialized_metadata["$Nodes"][an.an_node_id] = node_meta_stuff
-
-    var floating_trees_serialized: Array[Dictionary] = []
-    for floating_tree_root_an in floating_tree_roots:
-        floating_trees_serialized.append(floating_tree_root_an.serialize_me(SchemaManager.schema, gn_lookup))
-    serialized_metadata["$FloatingNodes"] = floating_trees_serialized
-    serialized_metadata["$WorkspaceID"] = hy_workspace_id
-    
-    serialized_metadata["$Groups"] = serialize_all_groups()
-    
-    for other_key in all_meta.keys():
-        if serialized_metadata.has(other_key):
-            continue
-        serialized_metadata[other_key] = all_meta[other_key]
-    return serialized_metadata
-
-func serialize_all_groups(use_position_scale: bool = true) -> Array[Dictionary]:
-    return serialize_groups(get_all_groups(), use_position_scale)
-
 func serialize_groups(the_groups: Array[GraphFrame], use_position_scale: bool = true, relative_to_offset: Vector2 = Vector2.ZERO) -> Array[Dictionary]:
-    if the_groups.size() == 0:
-        return []
-    var serialized_groups: Array[Dictionary] = []
-    for group in the_groups:
-        serialized_groups.append(serialize_group(group, use_position_scale, relative_to_offset))
-    return serialized_groups
-
-func serialize_group(group: GraphFrame, use_position_scale: bool = true, relative_to_offset: Vector2 = Vector2.ZERO) -> Dictionary:
-    var serialized_group: Dictionary = {}
-
-    var adjusted_size: = group.size
-    if use_position_scale:
-        adjusted_size /= json_positions_scale
-
-    var adjusted_pos: = group.position_offset
-    adjusted_pos -= relative_to_offset
-    if use_position_scale:
-        adjusted_pos /= json_positions_scale
-    adjusted_pos = adjusted_pos.round()
-
-    serialized_group["$name"] = group.title
-    serialized_group["$Position"] = {
-        "$x": adjusted_pos.x,
-        "$y": adjusted_pos.y,
-    }
-    serialized_group["$width"] = adjusted_size.x
-    serialized_group["$height"] = adjusted_size.y
-    if group.get_meta("has_custom_color", false):
-        serialized_group["$CHANE"] = {
-            "$AccentColor": group.get_meta("custom_color_name", ""),
-        }
-    return serialized_group
+    serializer.serialized_pos_scale = json_positions_scale if use_position_scale else Vector2.ONE
+    serializer.serialized_pos_offset = relative_to_offset
+    return serializer.serialize_groups(the_groups)
 
 func get_metadata_for_gns(gns: Array[GraphNode], scaled_positions: bool, relative_to_offset: Vector2 = Vector2.ZERO) -> Dictionary:
     var node_metadata: Dictionary = {}

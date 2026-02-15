@@ -42,6 +42,12 @@ func fix_duplicate_settings_syncer(asset_node: HyAssetNode) -> void:
     assert(settings_syncer != null, "SettingsSyncer not found in duplicate graph node")
     settings_syncer.set_asset_node(asset_node)
 
+func add_an_metadata_into(for_an: HyAssetNode, serializer: CHANE_HyAssetNodeSerializer, into_dict: Dictionary) -> void:
+    if for_an.an_node_id != get_meta("hy_asset_node_id", ""):
+        push_warning("add_an_metadata_into: for_an %s is not the same as the asset node %s" % [for_an.an_node_id, get_meta("hy_asset_node_id", "")])
+        return
+    serializer.serialize_an_metadata_into(for_an, position_offset, into_dict)
+
 func _gui_input(event: InputEvent) -> void:
     if not event is InputEventMouseButton:
         return
