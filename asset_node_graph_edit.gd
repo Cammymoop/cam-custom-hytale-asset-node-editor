@@ -2080,7 +2080,7 @@ func _end_node_move_deferred() -> void:
     # For now I'm keeping the undo step of moving and inserting into the connection separate
     create_move_nodes_undo_step(selected_nodes)
     if selected_nodes.size() == 1 and selected_nodes[0] is CustomGraphNode:
-        var gn_rect: = selected_nodes[0].get_global_rect().grow(-8)
+        var gn_rect: = selected_nodes[0].get_global_rect().grow(-8).abs()
         var connections_overlapped: = get_connections_intersecting_with_rect(gn_rect)
         if try_inserting_graph_node_into_connections(selected_nodes[0], connections_overlapped):
             return
@@ -2162,7 +2162,6 @@ func _sort_groups_by_heirarchy_reversed(group_list: Array) -> Array[GraphFrame]:
 
 func _break_group_relations(group_relations: Array[Dictionary]) -> void:
     for group_relation in group_relations:
-        prints("breaking group relation: %s" % group_relation)
         _break_group_relation(group_relation)
 
 func remove_ge_from_group(ge: GraphElement, group: GraphFrame, with_undo: bool) -> void:
@@ -2275,11 +2274,9 @@ func create_undo_connection_change_step() -> void:
     if removed_ges.size() > 0:
         var the_ans: Dictionary[GraphElement, HyAssetNode] = {}
         for the_ge in removed_ges:
-            print("collecting asset nodes for ge being removed: %s" % the_ge.name)
             var an_id: String = the_ge.get_meta("hy_asset_node_id", "")
             if an_id:
                 var the_an: HyAssetNode = an_lookup.get(an_id)
-                print("ge asset node id: %s, asset node: %s" % [an_id, the_an])
                 the_ans[the_ge] = the_an
         undo_manager.add_undo_method(undo_remove_ges.bind(removed_ges, the_ans))
 
@@ -2479,7 +2476,6 @@ func add_group_membership_post_move_undo_actions(added_relations: Array[Dictiona
 
 func undo_remove_ges(the_ges: Array[GraphElement], the_ans: Dictionary[GraphElement, HyAssetNode]) -> void:
     for the_ge in the_ges:
-        print_debug("Undo remove GE: %s" % the_ge.name)
         _undo_remove_ge(the_ge, the_ans.get(the_ge, null))
 
 func _undo_remove_ge(the_graph_element: GraphElement, the_asset_node: HyAssetNode) -> void:

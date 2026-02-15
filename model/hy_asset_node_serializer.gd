@@ -92,7 +92,7 @@ func get_deserialize_scaled_pos(data_pos: Vector2) -> Vector2:
     return data_pos * serialized_pos_scale
 
 func get_deserialize_offset_scaled_pos(data_pos: Vector2) -> Vector2:
-    return get_serialize_scaled_pos(data_pos) + serialized_pos_offset
+    return get_deserialize_scaled_pos(data_pos) + serialized_pos_offset
 
 func parse_asset_node_tree(old_style: bool, asset_node_data: Dictionary, external_metadata: Dictionary, inference_hints: Dictionary) -> TreeParseResult:
     # Note: external_metadata only needed currently for titles (non-old-style)
@@ -429,15 +429,18 @@ func serialize_node_editor_metadata(graph_edit: CHANE_AssetNodeGraphEdit) -> Dic
     var fallback_pos: = get_serialize_offset_scaled_pos(root_gn.position_offset - Vector2(200, 200))
     
     var an_owners: Dictionary[HyAssetNode, GraphNode] = {}
-    for gn in get_children():
+    for gn in graph_edit.get_children():
         if not gn is CustomGraphNode:
             continue
         if not gn.get_meta("is_special_gn", false):
+            #prints("gn: %s" % gn.name, "non-special", "an_id: %s" % gn.get_meta("hy_asset_node_id", ""))
             var an_id: String = gn.get_meta("hy_asset_node_id", "")
             assert(graph_edit.an_lookup.has(an_id), "Serialize Node Editor Metadata: Asset node not found for graph node %s with id %s" % [gn.name, an_id])
             if graph_edit.an_lookup.has(an_id):
                 an_owners[graph_edit.an_lookup[an_id]] = gn
         else:
+            var owned_ans: Array[HyAssetNode] = gn.get_own_asset_nodes()
+            #prints("gn: %s" % gn.name, "special", "owned_ans: %s" % [owned_ans.map(func(an): return an.an_node_id)])
             for owned_an in gn.get_own_asset_nodes():
                 an_owners[owned_an] = gn
 
@@ -463,7 +466,7 @@ func serialize_node_editor_metadata(graph_edit: CHANE_AssetNodeGraphEdit) -> Dic
 
     serialized_metadata[MetadataKeys.WorkspaceId] = graph_edit.hy_workspace_id
     
-    serialized_metadata[MetadataKeys.Groups] = graph_edit.serialize_all_groups()
+    serialized_metadata[MetadataKeys.Groups] = serialize_graph_edit_groups(graph_edit)
     
     # include other metadata we found in the file but don't do anything with
     for other_key in graph_edit.all_meta.keys():
