@@ -20,6 +20,9 @@ var graph_container: MarginContainer
 
 @export var curve_plot: CurvePlot
 
+@export var child_position_offset: Vector2 = Vector2(26, 0)
+@export var child_position_increment: Vector2 = Vector2(20, 100)
+
 const POINTS_CONNECTION_NAME: String = "Points"
 
 @export var cur_mode: String = "table"
@@ -75,6 +78,14 @@ func add_an_metadata_into(for_an: HyAssetNode, serializer: CHANE_HyAssetNodeSeri
     if OS.has_feature("debug"):
         var my_ans: = get_own_asset_nodes()
         assert(for_an in my_ans, "for_an %s not in my_ans %s" % [for_an.an_node_id, my_ans.map(func(an): return an.an_node_id)])
+    var index_of_an: int = get_own_asset_nodes().find(for_an)
+    if index_of_an == -1:
+        index_of_an = 0
+    into_dict[for_an.an_node_id] = serializer.serialize_an_metadata(for_an, get_phantom_gn_pos(index_of_an))
+
+func get_phantom_gn_pos(phantom_index: int) -> Vector2:
+    var base_pos: Vector2 = position_offset + child_position_offset + Vector2(size.x, 0)
+    return base_pos + child_position_increment * phantom_index
 
 # REQUIRED METHODS FOR SPECIAL GRAPH NODES::
 

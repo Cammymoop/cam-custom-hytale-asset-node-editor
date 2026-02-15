@@ -112,13 +112,16 @@ func serialize_copied_nodes(graph_edit: CHANE_AssetNodeGraphEdit) -> String:
             copied_groups.append(ge)
 
     var center_of_mass: Vector2 = Util.average_graph_element_pos_offset(graph_edit.copied_nodes)
-    var serialized_groups: Array[Dictionary] = graph_edit.serialize_groups(copied_groups, false, center_of_mass)
+
+    graph_edit.serializer.serialized_pos_scale = Vector2.ONE
+    graph_edit.serializer.serialized_pos_offset = center_of_mass
+    var serialized_groups: Array[Dictionary] = graph_edit.serializer.serialize_groups(copied_groups)
     var serialized_data: Dictionary = {
         "what_is_this": "Clipboard data from Cam Hytale Asset Node Editor",
         "copied_from": "CamHytaleANE:%s" % graph_edit.get_plain_version(),
         "asset_node_data": [],
         "included_metadata": {
-            "node_metadata": graph_edit.get_metadata_for_gns(copied_gns, false, center_of_mass),
+            "node_metadata": graph_edit.serializer.serialize_graph_nodes_metadata(copied_gns),
             "hanging_connections": [],
             "links": [],
             "groups": serialized_groups,

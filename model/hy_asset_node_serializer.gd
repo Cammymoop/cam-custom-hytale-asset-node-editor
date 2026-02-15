@@ -88,6 +88,12 @@ func failed_leaf_result(single_result: SingleParseResult) -> TreeParseResult:
 
 # Deserializing
 
+func get_deserialize_scaled_pos(data_pos: Vector2) -> Vector2:
+    return data_pos * serialized_pos_scale
+
+func get_deserialize_offset_scaled_pos(data_pos: Vector2) -> Vector2:
+    return get_serialize_scaled_pos(data_pos) + serialized_pos_offset
+
 func parse_asset_node_tree(old_style: bool, asset_node_data: Dictionary, external_metadata: Dictionary, inference_hints: Dictionary) -> TreeParseResult:
     # Note: external_metadata only needed currently for titles (non-old-style)
     var single_result: = parse_asset_node_shallow(old_style, asset_node_data, external_metadata, inference_hints)
@@ -258,6 +264,30 @@ func setup_base_info_and_settings(asset_node: HyAssetNode, node_data: Dictionary
             else:
                 asset_node.settings[setting_name] = parse_individual_setting_data(node_data[setting_name], gd_type)
 
+func deserialize_group(group_data: Dictionary) -> GraphFrame:
+    var new_group: = GraphFrame.new()
+
+    var raw_size: = Vector2(group_data.get(MetadataKeys.GroupWidth, 0), group_data.get(MetadataKeys.GroupHeight, 0))
+    new_group.size = get_deserialize_scaled_pos(raw_size)
+
+    var pos_meta: Dictionary = group_data.get(MetadataKeys.GroupPosition, {})
+    var raw_pos: Vector2 = Vector2(pos_meta.get(MetadataKeys.GroupPosX, 0), pos_meta.get(MetadataKeys.GroupPosY, 0))
+    new_group.position_offset = get_deserialize_offset_scaled_pos(raw_pos)
+
+    new_group.title = group_data.get(MetadataKeys.GroupName, "Group")
+    
+    new_group.set_meta("has_custom_color", false)
+    var chane_data: Dictionary = group_data.get(MetadataKeys.CHANE, {})
+    if chane_data and chane_data.has(MetadataKeys.CHANEGroupAccentColor):
+        new_group.set_meta("has_custom_color", true)
+        new_group.set_meta("custom_color_name", chane_data[MetadataKeys.CHANEGroupAccentColor])
+    return new_group
+
+func deserialize_node_position(node_metadata: Dictionary) -> Vector2:
+    var pos_meta: Dictionary = node_metadata.get(MetadataKeys.NodeMetaPosition, {})
+    var raw_pos: = Vector2(pos_meta.get(MetadataKeys.NodeMetaPosX, 0), pos_meta.get(MetadataKeys.NodeMetaPosY, 0))
+    return get_deserialize_offset_scaled_pos(raw_pos)
+
 func parse_individual_setting_data(raw_value: Variant, gd_type: int, sub_gd_type: int = -1) -> Variant:
     if gd_type == TYPE_INT:
         return roundi(float(raw_value))
@@ -363,6 +393,14 @@ func serialize_an_metadata(asset_node: HyAssetNode, graph_pos: Vector2) -> Dicti
     if asset_node.title and asset_node.title != asset_node.default_title:
         an_meta[MetadataKeys.NodeMetaTitle] = asset_node.title
     return an_meta
+
+func serialize_graph_nodes_metadata(graph_nodes: Array[GraphNode]) -> Dictionary:
+    var nodes_metadata: Dictionary = {}
+    for graph_node in graph_nodes:
+        var owned_ans: Array[HyAssetNode] = graph_node.get_own_asset_nodes()
+        for owned_an in owned_ans:
+            graph_node.add_an_metadata_into(owned_an, self, nodes_metadata)
+    return nodes_metadata
 
 ## Creates plain dictionary data in the hytale asset json format, mimicking the format used by the official asset node editor
 func serialize_entire_graph_as_asset(graph_edit: CHANE_AssetNodeGraphEdit) -> Dictionary:

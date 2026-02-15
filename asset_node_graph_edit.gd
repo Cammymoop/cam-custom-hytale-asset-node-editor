@@ -906,6 +906,7 @@ func _copy_or_cut_ges(ges: Array[GraphElement]) -> void:
     copied_from_pos_offset = get_leftmost_pos_offset_of_ges(ges)
     copied_from_screen_center_pos_offset = global_pos_to_position_offset(get_viewport_rect().size / 2)
     in_graph_copy_id = Util.random_str(16)
+    sort_all_an_connections()
     ClipboardManager.send_copied_nodes_to_clipboard(self)
 
 func get_leftmost_pos_offset_of_ges(ges: Array[GraphElement]) -> Vector2:
@@ -1014,7 +1015,7 @@ func paste_from_external() -> void:
     
     var added_groups: Array[GraphFrame] = []
     for group_data in copied_external_groups:
-        var new_group: = deserialize_and_add_group(group_data, false, false)
+        var new_group: = deserialize_and_add_group(group_data, false, true)
         added_groups.append(new_group)
         added_ges.append(new_group)
     add_nodes_inside_to_groups(added_groups, added_ges, true)
@@ -1157,10 +1158,11 @@ func create_graph_from_parsed_data() -> void:
     
     await get_tree().process_frame
 
-func get_node_position_from_meta(node_id: String, node_meta: Dictionary) -> Vector2:
+func get_node_position_from_meta(node_id: String, node_meta: Dictionary, use_json_pos_scale: bool = true) -> Vector2:
     var this_node_meta: Dictionary = node_meta.get(node_id, {}) as Dictionary
-    var meta_pos: Dictionary = this_node_meta.get("$Position", {"$x": relative_root_position.x, "$y": relative_root_position.y})
-    return Vector2(meta_pos["$x"], meta_pos["$y"])
+    serializer.serialized_pos_scale = json_positions_scale if use_json_pos_scale else Vector2.ONE
+    serializer.serialized_pos_offset = relative_root_position
+    return serializer.deserialize_node_position(this_node_meta)
 
 func init_asset_node(asset_node: HyAssetNode, with_meta_data: bool = false, meta_data: Dictionary = {}) -> void:
     if not with_meta_data:
@@ -1740,9 +1742,8 @@ func new_graph_node(asset_node: HyAssetNode, newly_created: bool, existing_metad
     # NOTE: dumb hack
     get_parent().remove_child(graph_node)
     
-    if use_json_positions:
-        var meta_pos: = get_node_position_from_meta(asset_node.an_node_id, node_meta) * json_positions_scale
-        graph_node.position_offset = meta_pos - relative_root_position
+    if existing_metadata or use_json_positions:
+        graph_node.position_offset = get_node_position_from_meta(asset_node.an_node_id, node_meta)
     
     return graph_node
 
@@ -2567,38 +2568,6 @@ func sort_all_an_connections() -> void:
     for an in all_asset_nodes:
         an.sort_connections_by_gn_pos(gn_lookup)
 
-func serialize_groups(the_groups: Array[GraphFrame], use_position_scale: bool = true, relative_to_offset: Vector2 = Vector2.ZERO) -> Array[Dictionary]:
-    serializer.serialized_pos_scale = json_positions_scale if use_position_scale else Vector2.ONE
-    serializer.serialized_pos_offset = relative_to_offset
-    return serializer.serialize_groups(the_groups)
-
-func get_metadata_for_gns(gns: Array[GraphNode], scaled_positions: bool, relative_to_offset: Vector2 = Vector2.ZERO) -> Dictionary:
-    var node_metadata: Dictionary = {}
-    for main_gn in gns:
-        var owned_ans: Array[HyAssetNode] = get_gn_own_asset_nodes(main_gn)
-        for owned_an in owned_ans:
-            node_metadata[owned_an.an_node_id] = single_node_metadata(scaled_positions, owned_an, main_gn, relative_to_offset)
-    return node_metadata
-
-func single_node_metadata(scaled_positions: bool, an: HyAssetNode, owning_gn: GraphNode = null, relative_to_offset: Vector2 = Vector2.ZERO) -> Dictionary:
-    var metadata: Dictionary = {}
-    if an.title:
-        metadata["$Title"] = an.title
-
-    var gn: = gn_lookup.get(an.an_node_id, null) as GraphNode
-    var position_offset: Vector2 = Vector2.ZERO
-    if gn:
-        position_offset = gn.position_offset
-    elif owning_gn:
-        position_offset = owning_gn.position_offset + Vector2(owning_gn.size.x + 100, 0)
-
-    position_offset -= relative_to_offset
-    if scaled_positions:
-        position_offset /= json_positions_scale
-    position_offset = position_offset.round()
-    metadata["$Position"] = { "$x": position_offset.x, "$y": position_offset.y }
-    return metadata
-
 func on_new_node_type_picked(node_type: String) -> void:
     var new_an: HyAssetNode = get_new_asset_node(node_type)
     var new_gn: CustomGraphNode = null
@@ -3201,7 +3170,7 @@ func can_delete_ge(graph_element: GraphElement) -> bool:
     return false
 
 func deserialize_and_add_group_and_attach_graph_nodes(group_data: Dictionary) -> GraphFrame:
-    var new_group: = deserialize_and_add_group(group_data, true, true)
+    var new_group: = deserialize_and_add_group(group_data, true, false)
     var ges_to_attach: Array[GraphElement] = []
     var new_group_rect: = new_group.get_rect()
     new_group_rect.position = new_group.position_offset
@@ -3223,40 +3192,18 @@ func deserialize_and_add_group_and_attach_graph_nodes(group_data: Dictionary) ->
                 ges_to_attach.append(child)
     add_ges_to_group(ges_to_attach, new_group)
     return new_group
+
+func _get_deserialized_group(group_data: Dictionary, use_json_pos_scale: bool, relative_to_screen_center: bool) -> GraphFrame:
+    serializer.serialized_pos_scale = json_positions_scale if use_json_pos_scale else Vector2.ONE
+    serializer.serialized_pos_offset = relative_root_position
+    if relative_to_screen_center:
+        serializer.serialized_pos_offset = global_pos_to_position_offset(get_viewport().get_visible_rect().size / 2)
+    return serializer.deserialize_group(group_data)
             
-func deserialize_and_add_group(group_data: Dictionary, json_pos_scale: bool, abs_position: bool) -> GraphFrame:
-    var group_size: Vector2 = Vector2(group_data.get("$width", 0), group_data.get("$height", 0))
-    if group_size.x == 0:
-        group_size.x = 100
-    if group_size.y == 0:
-        group_size.y = 100
-    if json_pos_scale:
-        group_size *= json_positions_scale
-
-    var group_title: String = group_data.get("$name", "Group")
-    var pos_meta: Dictionary = group_data.get("$Position", {})
-    var pos_offset: Vector2 = Vector2(pos_meta.get("$x", 0), pos_meta.get("$y", 0))
-    if json_pos_scale:
-        pos_offset *= json_positions_scale
-
-    if abs_position:
-        pos_offset -= relative_root_position
-    else:
-        var screen_center_pos: = get_viewport().get_visible_rect().size / 2
-        pos_offset += global_pos_to_position_offset(screen_center_pos)
-    
-    var group_color_name: String = ""
-    var has_custom_color: bool = false
-    if group_data.has("$CHANE"):
-        var chane_data: Dictionary = group_data["$CHANE"]
-        if chane_data.has("$AccentColor"):
-            has_custom_color = true
-            group_color_name = chane_data["$AccentColor"]
-    
-    if has_custom_color:
-        return add_new_colored_group(group_color_name, pos_offset, group_title, group_size)
-    else:
-        return add_new_group(pos_offset, group_title, group_size)
+func deserialize_and_add_group(group_data: Dictionary, use_json_pos_scale: bool, relative_to_screen_center: bool) -> GraphFrame:
+    var new_group: = _get_deserialized_group(group_data, use_json_pos_scale, relative_to_screen_center)
+    add_existing_group(new_group)
+    return new_group
 
 func set_group_color_with_undo(group: GraphFrame, group_color_name: String) -> void:
     if not group.get_meta("has_custom_color", false):
@@ -3279,22 +3226,26 @@ func add_group_color_with_undo(group: GraphFrame, group_color_name: String) -> v
     undo_manager.commit_action(true)
     refresh_graph_elements_in_frame_status()
 
-func set_group_custom_accent_color(the_group: GraphFrame, group_color_name: String) -> void:
-    if not ThemeColorVariants.has_theme_color(group_color_name):
-        if ThemeColorVariants.has_theme_color(ANESettings.default_group_color):
-            group_color_name = ANESettings.default_group_color
-        else:
-            group_color_name = TypeColors.fallback_color
+func get_default_group_color_name() -> String:
+    if ThemeColorVariants.has_theme_color(ANESettings.default_group_color):
+        return ANESettings.default_group_color
+    return TypeColors.fallback_color
+
+func set_group_custom_accent_color(the_group: GraphFrame, group_color_name: String, as_custom: bool = true) -> void:
+    if not as_custom:
+        remove_group_accent_color(the_group)
+        return
+    if not group_color_name or not ThemeColorVariants.has_theme_color(group_color_name):
+        group_color_name = get_default_group_color_name()
 
     the_group.set_meta("has_custom_color", true)
     the_group.set_meta("custom_color_name", group_color_name)
     the_group.theme = ThemeColorVariants.get_theme_color_variant(group_color_name)
 
 func remove_group_accent_color(group: GraphFrame) -> void:
-    set_group_custom_accent_color(group, ANESettings.default_group_color)
     group.set_meta("has_custom_color", false)
     group.set_meta("custom_color_name", "")
-    group.theme = ThemeColorVariants.get_theme_color_variant(ANESettings.default_group_color)
+    group.theme = ThemeColorVariants.get_theme_color_variant(get_default_group_color_name())
 
 func _make_new_group(group_title: String = "Group", group_size: Vector2 = Vector2(100, 100)) -> GraphFrame:
     var new_group: = GraphFrame.new()
@@ -3307,6 +3258,14 @@ func _make_new_group(group_title: String = "Group", group_size: Vector2 = Vector
     
     return new_group
 
+func add_existing_group(the_group: GraphFrame) -> void:
+    var custom_color_name: String = the_group.get_meta("custom_color_name", "")
+    var has_custom_color: bool = the_group.get_meta("has_custom_color", false)
+    set_group_custom_accent_color(the_group, custom_color_name, has_custom_color)
+
+    add_child(the_group, true)
+    bring_group_to_front(the_group)
+
 func add_new_group(at_pos_offset: Vector2, with_title: String = "Group", with_size: Vector2 = Vector2.ZERO) -> GraphFrame:
     if with_size == Vector2.ZERO:
         with_size = ANESettings.default_group_size
@@ -3317,6 +3276,12 @@ func add_new_group(at_pos_offset: Vector2, with_title: String = "Group", with_si
     new_group.set_meta("has_custom_color", false)
     new_group.theme = ThemeColorVariants.get_theme_color_variant(ANESettings.default_group_color)
     new_group.raise_request.emit()
+    return new_group
+
+func add_new_colored_group(with_color: String, at_pos_offset: Vector2, with_title: String = "Group", with_size: Vector2 = Vector2.ZERO) -> GraphFrame:
+    var new_group: = add_new_group(at_pos_offset, with_title, with_size)
+    
+    set_group_custom_accent_color(new_group, with_color)
     return new_group
 
 func add_new_group_title_centered(at_pos_offset: Vector2) -> GraphFrame:
@@ -3353,12 +3318,6 @@ func create_new_group_undo_step(new_group: GraphFrame, into_group: GraphFrame) -
         add_group_membership_to_cur_undo_action(false, true)
 
     undo_manager.commit_action(false)
-
-func add_new_colored_group(with_color: String, at_pos_offset: Vector2, with_title: String = "Group", with_size: Vector2 = Vector2.ZERO) -> GraphFrame:
-    var new_group: = add_new_group(at_pos_offset, with_title, with_size)
-    
-    set_group_custom_accent_color(new_group, with_color)
-    return new_group
 
 func set_groups_shrinkwrap_with_undo(groups: Array[GraphFrame], shrinkwrap: bool) -> void:
     var old_group_shrinkwrap: Dictionary[GraphFrame, bool] = {}
