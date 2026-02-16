@@ -1,6 +1,12 @@
 class_name HyAssetNode
 extends Resource
 
+
+class AuxData:
+    var position: Vector2 = Vector2.ZERO
+    var title: String = ""
+
+
 signal settings_changed()
 
 @export var an_node_id: String = ""
@@ -218,10 +224,10 @@ func _get_connected_node_list(conn_name: String) -> Array[HyAssetNode]:
         node_list.append(connected_asset_nodes["%s:%d" % [conn_name, i]])
     return node_list
 
-func sort_connections_by_gn_pos(gn_lookup: Dictionary[String, GraphNode]) -> void:
+func sort_connections_by_gn_pos(gn_lookup: Dictionary[String, CustomGraphNode]) -> void:
     var sort_by_gn_pos: = func (a: HyAssetNode, b: HyAssetNode) -> bool:
-        var a_gn: = gn_lookup.get(a.an_node_id, null) as GraphNode
-        var b_gn: = gn_lookup.get(b.an_node_id, null) as GraphNode
+        var a_gn: = gn_lookup.get(a.an_node_id, null) as CustomGraphNode
+        var b_gn: = gn_lookup.get(b.an_node_id, null) as CustomGraphNode
         if not a_gn or not b_gn:
             return a_gn != null
         elif a_gn.position_offset.y != b_gn.position_offset.y:

@@ -1,5 +1,4 @@
 extends Node
-class_name SpecialGNFactory
 
 var types_with_special_nodes: Array[String] = [
     "ManualCurve",
@@ -56,3 +55,6 @@ func get_new_asset_node(asset_node_type: String) -> HyAssetNode:
     var new_an: HyAssetNode = graph_edit.get_new_asset_node(asset_node_type)
     graph_edit.floating_tree_roots.erase(new_an)
     return new_an
+
+func should_be_special_gn(asset_node: HyAssetNode) -> bool:
+    return types_with_special_nodes.has(asset_node.an_type)

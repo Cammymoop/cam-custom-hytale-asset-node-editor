@@ -99,7 +99,7 @@ func deserialize_clipboard_data_roots(parsed_clipboard: Dictionary, graph_edit: 
     var clipboard_nodes_meta: Dictionary[String, Dictionary] = {}
     clipboard_nodes_meta.merge(parsed_clipboard["included_metadata"]["node_metadata"])
     for root_data in parsed_clipboard["asset_node_data"]:
-        all_tree_results.append(graph_edit.serializer.parse_asset_node_tree(false, root_data, clipboard_nodes_meta, {}))
+        all_tree_results.append(graph_edit.serializer.parse_asset_node_tree_with_node_meta(root_data, clipboard_nodes_meta, {}))
     return all_tree_results
 
 func serialize_copied_nodes(graph_edit: CHANE_AssetNodeGraphEdit) -> String:
@@ -118,13 +118,14 @@ func serialize_copied_nodes(graph_edit: CHANE_AssetNodeGraphEdit) -> String:
     var serialized_groups: Array[Dictionary] = graph_edit.serializer.serialize_groups(copied_groups)
     var serialized_data: Dictionary = {
         "what_is_this": "Clipboard data from Cam Hytale Asset Node Editor",
-        "copied_from": "CamHytaleANE:%s" % graph_edit.get_plain_version(),
+        "copied_from": "CamHytaleANE:%s" % Util.get_plain_version(),
         "asset_node_data": [],
         "included_metadata": {
             "node_metadata": graph_edit.serializer.serialize_graph_nodes_metadata(copied_gns),
             "hanging_connections": [],
             "links": [],
             "groups": serialized_groups,
+            "workspace_id": graph_edit.hy_workspace_id,
         }
     }
 

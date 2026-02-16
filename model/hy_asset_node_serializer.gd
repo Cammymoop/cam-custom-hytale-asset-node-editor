@@ -36,6 +36,7 @@ class SingleParseResult:
     var asset_node: HyAssetNode = null
     var success: bool = true
     var is_existing_node_id: bool = true
+    var old_style_metadata: Dictionary = {}
 
 class TreeParseResult:
     var from_old_style_data: bool = false
@@ -59,6 +60,51 @@ class TreeParseResult:
             success = false
             if not first_failure_at and other_result.first_failure_at:
                 first_failure_at = other_result.first_failure_at
+    
+    func get_node_meta_from_old_style() -> Dictionary[String, Dictionary]:
+        var node_meta: Dictionary[String, Dictionary] = {}
+        for node_result in all_nodes_results:
+            if not node_result.success or not node_result.old_style_metadata:
+                continue
+            node_meta[node_result.asset_node.an_node_id] = node_result.old_style_metadata
+        return node_meta
+    
+    func get_an_id_list() -> Array[String]:
+        var an_id_list: Array[String] = []
+        for node_result in all_nodes_results:
+            an_id_list.append(node_result.asset_node.an_node_id)
+        return an_id_list
+
+class EntireGraphParseResult:
+    var success: bool = true
+    var was_old_style_format: bool = false
+    var has_positions: bool = false
+
+    var root_node: HyAssetNode = null
+    var root_tree_result: TreeParseResult = null
+    var all_nodes: Dictionary[String, HyAssetNode] = {}
+    var floating_tree_roots: Dictionary[String, HyAssetNode] = {}
+    var floating_tree_results: Dictionary[String, TreeParseResult] = {}
+    var all_metadata: Dictionary = {}
+    var asset_node_aux_data: Dictionary[String, HyAssetNode.AuxData] = {}
+    
+    func _add_result_nodes(parse_result: TreeParseResult) -> void:
+        for node in parse_result.all_nodes:
+            all_nodes[node.an_node_id] = node
+    
+    func add_root_result(parse_result: TreeParseResult) -> void:
+        root_tree_result = parse_result
+        root_node = parse_result.root_node
+        _add_result_nodes(parse_result)
+        if not parse_result.success:
+            success = false
+    
+    func add_floating_result(parse_result: TreeParseResult) -> void:
+        var tree_key: String = parse_result.root_node.an_node_id if parse_result.root_node else "1"
+        while floating_tree_results.has(tree_key):
+            tree_key = str(int(tree_key) + 1)
+        floating_tree_results[tree_key] = parse_result
+        _add_result_nodes(parse_result)
 
 var serialized_pos_scale: Vector2 = Vector2.ONE
 var serialized_pos_offset: Vector2 = Vector2.ZERO
@@ -94,9 +140,175 @@ func get_deserialize_scaled_pos(data_pos: Vector2) -> Vector2:
 func get_deserialize_offset_scaled_pos(data_pos: Vector2) -> Vector2:
     return get_deserialize_scaled_pos(data_pos) + serialized_pos_offset
 
-func parse_asset_node_tree(old_style: bool, asset_node_data: Dictionary, external_metadata: Dictionary, inference_hints: Dictionary) -> TreeParseResult:
-    # Note: external_metadata only needed currently for titles (non-old-style)
-    var single_result: = parse_asset_node_shallow(old_style, asset_node_data, external_metadata, inference_hints)
+func _discover_workspace_id_from_root_node(graph_data: Dictionary) -> String:
+    var node_id: String = graph_data.get(MetadataKeys.NodeId, "")
+    if not node_id:
+        print_debug("No metadata and root node has no NodeId, aborting")
+        push_error("No metadata and root node has no NodeId, aborting")
+        return ""
+
+    if node_id.begins_with(SchemaManager.schema.get_id_prefix_for_node_type("Biome")):
+        print("no workspace but found Biome node, setting workspace to Biome")
+        return "HytaleGenerator - Biome"
+    else:
+        var possible_output_types: Array[String] = SchemaManager.schema.workspace_root_output_types.values()
+        var node_type_by_output_type: Dictionary[String, Array] = {}
+        for node_type in SchemaManager.schema.node_schema:
+            var schm: Dictionary = SchemaManager.schema.node_schema[node_type]
+            var output_value_type: String = schm["output_value_type"]
+            if output_value_type in possible_output_types:
+                if not node_type_by_output_type.has(output_value_type):
+                    node_type_by_output_type[output_value_type] = []
+                node_type_by_output_type[output_value_type].append(node_type)
+        
+        
+        for output_value_type in node_type_by_output_type.keys():
+            for node_type in node_type_by_output_type[output_value_type]:
+                var id_prefix: = SchemaManager.schema.get_id_prefix_for_node_type(node_type) as String
+                if not id_prefix:
+                    continue
+                if node_id.begins_with(id_prefix + "-"):
+                    print("discovered workspace by finding root node type: %s" % node_type)
+                    return SchemaManager.schema.workspace_root_output_types.find_key(output_value_type)
+
+        print_debug("Was not able to discover workspace ID from root node id")
+        push_warning("Was not able to discover workspace ID from root node id")
+        return ""
+
+static func get_empty_editor_metadata() -> Dictionary:
+    return {
+        MetadataKeys.NodesMeta: {},
+        MetadataKeys.FloatingRoots: [],
+        MetadataKeys.Groups: [],
+        MetadataKeys.Comments: [],
+        MetadataKeys.Links: {},
+        MetadataKeys.WorkspaceId: "",
+    }
+
+
+func deserialize_entire_graph(graph_data: Dictionary) -> EntireGraphParseResult:
+    var result: = EntireGraphParseResult.new()
+    result.hy_workspace_id = ""
+    result.was_old_style_format = false
+    result.has_positions = true
+
+    if graph_data.has(MetadataKeys.WorkspaceId) or graph_data.has(MetadataKeys.NodeMetaPosition):
+        result.was_old_style_format = true
+        result.editor_metadata = get_empty_editor_metadata()
+        # Old style has some metadata in the root node directly, use what we can
+        for editor_meta_key in result.editor_metadata.keys():
+            if editor_meta_key == MetadataKeys.NodesMeta:
+                continue
+            if editor_meta_key == MetadataKeys.FloatingRoots:
+                # Floating nodes dont seem to be present in the old style format, better to avoid that edge case entirely just in case
+                continue
+
+            if editor_meta_key in graph_data:
+                result.editor_metadata[editor_meta_key] = graph_data[editor_meta_key].duplicate(true)
+
+        if graph_data.get(MetadataKeys.WorkspaceId, ""):
+            result.hy_workspace_id = graph_data[MetadataKeys.WorkspaceId]
+        else:
+            # Old style format doesn't use node IDs so inferring the type of the root node without a workspace ID is janky at best
+            # not even trying for now. since the old style format isn't even saved by any known editor there's probably no reason to do this anyway.
+            print_debug("Old style format with missing workspace ID, aborting")
+            push_error("Old style format with missing workspace ID, aborting")
+            result.success = false
+            return result
+    elif not graph_data.get(MetadataKeys.NodeEditorMetadata, {}):
+        print_debug("Root node (not old-style) does not have editor metadata")
+        push_warning("Root node (not old-style) does not have editor metadata")
+        result.has_positions = false
+        result.editor_metadata = get_empty_editor_metadata()
+        result.hy_workspace_id = _discover_workspace_id_from_root_node(graph_data)
+    else:
+        result.editor_metadata = graph_data[MetadataKeys.NodeEditorMetadata].duplicate(true)
+        result.hy_workspace_id = result.editor_metadata.get(MetadataKeys.WorkspaceId, "")
+
+    if not result.hy_workspace_id:
+        print_debug("Missing workspace ID and Unable to infer workspace from file data, aborting")
+        push_error("Missing workspace ID and Unable to infer workspace from file data, aborting")
+        result.success = false
+        return result
+    else:
+        result.editor_metadata[MetadataKeys.WorkspaceId] = result.hy_workspace_id
+
+    var root_node_type: String = SchemaManager.schema.resolve_root_asset_node_type(result.hy_workspace_id, graph_data)
+
+    if result.was_old_style_format:
+        graph_data[MetadataKeys.NodeId] = get_unique_an_id(SchemaManager.schema.get_id_prefix_for_node_type(root_node_type))
+    
+    # Old style format doesn't use node IDs, so we need to create node aux data after parsing the nodes (which automatically sets the node IDs into graph_data)
+    # for new style it's better to create aux data first though, it has the titles which would otherwise need to be patched into the asset nodes later
+    var aux_data: Dictionary[String, HyAssetNode.AuxData] = {}
+    if not result.was_old_style_format:
+        var node_meta: = result.editor_metadata.get(MetadataKeys.NodesMeta, {}) as Dictionary
+        aux_data = create_node_aux_data_from_node_meta(node_meta)
+        result.asset_node_aux_data = aux_data
+    
+    var an_id_list: Array[String] = []
+
+    var root_infer_hints: Dictionary = { "asset_node_type": root_node_type }
+    var root_parse_result: = parse_asset_node_tree(result.was_old_style_format, graph_data, result.asset_node_aux_data, root_infer_hints)
+    result.add_root_result(root_parse_result)
+    if not root_parse_result.success:
+        push_error("Failed to parse asset node root tree")
+        result.success = false
+        return result
+    
+    an_id_list.append_array(root_parse_result.get_an_id_list())
+
+    # Now create the node aux data for the old style format
+    if result.was_old_style_format:
+        var node_meta_from_root_tree: Dictionary = root_parse_result.get_node_meta_from_old_style()
+        if node_meta_from_root_tree.size() > 0:
+            result.editor_metadata[MetadataKeys.NodesMeta] = node_meta_from_root_tree
+            aux_data = create_node_aux_data_from_node_meta(node_meta_from_root_tree)
+            result.asset_node_aux_data = aux_data
+
+    # Parse floating node trees (note: old style has no floating node trees)
+    var flt_data: = result.editor_metadata.get(MetadataKeys.FloatingRoots, []) as Array
+    for floating_tree in flt_data:
+        if not floating_tree.get(MetadataKeys.NodeId, ""):
+            push_warning("Floating node does not have a NodeId, skipping")
+            continue
+        var floating_root_id: String = floating_tree[MetadataKeys.NodeId]
+        if floating_root_id in an_id_list:
+            print_debug("Floating root node %s exists in another tree, assuming it was mistakenly added to floating tree roots, skipping" % floating_root_id)
+            #continue
+        
+        # No inference hints for floating tree roots
+        var floating_parse_result: = parse_asset_node_tree(false, floating_tree, aux_data, {})
+        if not floating_parse_result.success:
+            push_warning("Failed to parse floating tree root at index %d" % flt_data.find(floating_tree))
+
+        result.add_floating_result(floating_parse_result)
+        an_id_list.append_array(floating_parse_result.get_an_id_list())
+    
+    result.success = true
+    return result
+
+func create_node_aux_data_from_node_meta(node_meta: Dictionary) -> Dictionary[String, HyAssetNode.AuxData]:
+    var aux_data: Dictionary[String, HyAssetNode.AuxData] = {}
+    for node_id in node_meta.keys():
+        aux_data[node_id] = create_node_aux_data(node_meta[node_id])
+    return aux_data
+
+func create_node_aux_data(node_meta: Dictionary) -> HyAssetNode.AuxData:
+    var node_aux_data: = HyAssetNode.AuxData.new()
+    node_aux_data.position = deserialize_node_position(node_meta)
+    node_aux_data.title = node_meta.get(MetadataKeys.NodeMetaTitle, "")
+    return node_aux_data
+
+
+func parse_asset_node_tree_with_node_meta(asset_node_data: Dictionary, inference_hints: Dictionary, node_meta: Dictionary) -> TreeParseResult:
+    var aux_data: Dictionary[String, HyAssetNode.AuxData] = create_node_aux_data_from_node_meta(node_meta)
+    return parse_asset_node_tree(false, asset_node_data, inference_hints, aux_data)
+
+func parse_asset_node_tree(old_style: bool, asset_node_data: Dictionary, inference_hints: Dictionary, aux_data: Dictionary[String, HyAssetNode.AuxData] = {}) -> TreeParseResult:
+    var root_node_aux: HyAssetNode.AuxData = aux_data.get(asset_node_data.get(MetadataKeys.NodeId, ""), null)
+
+    var single_result: = parse_asset_node_shallow(old_style, asset_node_data, inference_hints, root_node_aux)
     if not single_result.success:
         print_debug("Failed to parse asset node %s" % asset_node_data.get(MetadataKeys.NodeId, ""))
         push_error("Failed to parse asset node %s" % asset_node_data.get(MetadataKeys.NodeId, ""))
@@ -113,7 +325,7 @@ func parse_asset_node_tree(old_style: bool, asset_node_data: Dictionary, externa
         for conn_node_data in cur_result.root_node.get_raw_connected_nodes(conn_name):
             var conn_value_type: = SchemaManager.schema.get_an_connection_value_type(cur_result.root_node, conn_name)
             var infer_hints: Dictionary = { "output_value_type": conn_value_type }
-            var branch_result: = parse_asset_node_tree(old_style, conn_node_data, external_metadata, infer_hints)
+            var branch_result: = parse_asset_node_tree(old_style, conn_node_data, infer_hints, aux_data)
 
             cur_result.merge_results(branch_result)
             if branch_result.root_node:
@@ -121,8 +333,7 @@ func parse_asset_node_tree(old_style: bool, asset_node_data: Dictionary, externa
     
     return cur_result
 
-func parse_asset_node_shallow(old_style: bool, asset_node_data: Dictionary, external_metadata: Dictionary, inference_hints: Dictionary) -> SingleParseResult:
-    # Note: external_metadata only needed currently for titles (non-old-style)
+func parse_asset_node_shallow(old_style: bool, asset_node_data: Dictionary, inference_hints: Dictionary, node_aux: HyAssetNode.AuxData) -> SingleParseResult:
     if not asset_node_data:
         print_debug("Asset node data is empty")
         return single_failed_result()
@@ -156,16 +367,23 @@ func parse_asset_node_shallow(old_style: bool, asset_node_data: Dictionary, exte
             asset_node_type = SchemaManager.schema.resolve_asset_node_type(type_key, output_value_type)
             if not asset_node_type or asset_node_type == "Unknown":
                 push_warning("No %s from node data, fallback using output value type and 'Type' key also failed, the node will have an Unknown type" % MetadataKeys.NodeId)
-                return parse_schemaless_asset_node(asset_node_data, external_metadata)
+                return parse_schemaless_asset_node(asset_node_data, node_aux)
 
             asset_node_data[MetadataKeys.NodeId] = get_unique_an_id(SchemaManager.schema.get_id_prefix_for_node_type(asset_node_type))
         else:
             asset_node_type = SchemaManager.schema.infer_asset_node_type_from_id(asset_node_data[MetadataKeys.NodeId])
 
     if asset_node_type == "Unknown":
-        return parse_schemaless_asset_node(asset_node_data, external_metadata)
+        return parse_schemaless_asset_node(asset_node_data, node_aux)
     
     assert(asset_node_data.get(MetadataKeys.NodeId, ""), "NodeId is required (should have been implicitly set if is old-style)")
+    
+    if old_style:
+        result.old_style_metadata = {
+            MetadataKeys.NodeMetaPosition: asset_node_data.get(MetadataKeys.NodeMetaPosition, {}).duplicate(),
+        }
+        if asset_node_data.get(MetadataKeys.NodeMetaTitle, ""):
+            result.old_style_metadata[MetadataKeys.NodeMetaTitle] = asset_node_data.get(MetadataKeys.NodeMetaTitle, "")
     
     result.asset_node = HyAssetNode.new()
     var asset_node: = result.asset_node
@@ -184,7 +402,7 @@ func parse_asset_node_shallow(old_style: bool, asset_node_data: Dictionary, exte
     
     asset_node.raw_tree_data = asset_node_data.duplicate()
     
-    setup_base_info_and_settings(asset_node, asset_node_data, an_schema, external_metadata)
+    setup_base_info_and_settings(asset_node, asset_node_data, an_schema, node_aux)
     var connection_names: Array[String] = get_connection_like_keys(asset_node_data, an_schema)
     for setting_name in asset_node.settings.keys():
         if setting_name in connection_names:
@@ -200,7 +418,7 @@ func parse_asset_node_shallow(old_style: bool, asset_node_data: Dictionary, exte
     result.success = true
     return result
 
-func parse_schemaless_asset_node(asset_node_data: Dictionary, external_metadata: Dictionary) -> SingleParseResult:
+func parse_schemaless_asset_node(asset_node_data: Dictionary, node_aux: HyAssetNode.AuxData) -> SingleParseResult:
     var result: SingleParseResult = SingleParseResult.new()
     var asset_node = HyAssetNode.new()
     asset_node.raw_tree_data = asset_node_data.duplicate()
@@ -214,7 +432,7 @@ func parse_schemaless_asset_node(asset_node_data: Dictionary, external_metadata:
         result.is_existing_node_id = true
     asset_node.an_type = "Unknown"
     
-    setup_base_info_and_settings(asset_node, asset_node_data, {}, external_metadata)
+    setup_base_info_and_settings(asset_node, asset_node_data, {}, node_aux)
     
     var connection_like_keys: Array[String] = get_connection_like_keys(asset_node_data, {})
     add_unknown_settings(asset_node, asset_node_data, connection_like_keys, {})
@@ -226,18 +444,16 @@ func parse_schemaless_asset_node(asset_node_data: Dictionary, external_metadata:
     return result
 
 
-func setup_base_info_and_settings(asset_node: HyAssetNode, node_data: Dictionary, an_schema: Dictionary, external_metadata: Dictionary) -> void:
-    var ext_meta: Dictionary = external_metadata.get(asset_node.an_node_id, {})
-
+func setup_base_info_and_settings(asset_node: HyAssetNode, node_data: Dictionary, an_schema: Dictionary, node_aux: HyAssetNode.AuxData = null) -> void:
     if asset_node.an_type == "Unknown":
         asset_node.default_title = "Generic Node"
     else:
         asset_node.default_title = SchemaManager.schema.get_node_type_default_name(asset_node.an_type)
 
-    if ext_meta.get(MetadataKeys.NodeMetaTitle, ""):
-        asset_node.title = str(ext_meta[MetadataKeys.NodeMetaTitle])
+    if node_aux:
+        asset_node.title = node_aux.title
     elif node_data.get(MetadataKeys.NodeMetaTitle, ""):
-        # legacy spot for title
+        # old style format needs to set the title using the in-node metadata
         asset_node.title = str(node_data[MetadataKeys.NodeMetaTitle])
 
     if not asset_node.title:
@@ -403,14 +619,18 @@ func serialize_graph_nodes_metadata(graph_nodes: Array[GraphNode]) -> Dictionary
     return nodes_metadata
 
 ## Creates plain dictionary data in the hytale asset json format, mimicking the format used by the official asset node editor
-func serialize_entire_graph_as_asset(graph_edit: CHANE_AssetNodeGraphEdit) -> Dictionary:
-    # Make the reference position and scale is set up
-    serialized_pos_scale = graph_edit.json_positions_scale
-    serialized_pos_offset = graph_edit.relative_root_position
+func serialize_entire_graph_as_asset(editor: CHANE_AssetNodeEditor) -> Dictionary:
+    if editor.root_asset_node == null or editor.all_asset_nodes.size() == 0:
+        print_debug("Serialize entire graph as asset: No root asset node or no asset nodes")
+        return {}
+    editor._pre_serialize()
+    # Make sure the reference position and scale is set up
+    serialized_pos_scale = editor.json_positions_scale
+    serialized_pos_offset = editor.relative_root_position
     # The root asset node is also the root dictionary of the asset json format
-    var serialized_data: Dictionary = serialize_asset_node_tree(graph_edit.root_node)
+    var serialized_data: Dictionary = serialize_asset_node_tree(editor.root_asset_node)
     # Floating trees are included in the node editor metadata
-    serialized_data[MetadataKeys.NodeEditorMetadata] = serialize_node_editor_metadata(graph_edit)
+    serialized_data[MetadataKeys.NodeEditorMetadata] = serialize_node_editor_metadata(editor)
     return serialized_data
 
 func serialize_multiple_an_trees(an_trees: Array[HyAssetNode]) -> Array[Dictionary]:
@@ -419,60 +639,29 @@ func serialize_multiple_an_trees(an_trees: Array[HyAssetNode]) -> Array[Dictiona
         serialized_an_trees.append(serialize_asset_node_tree(tree_root))
     return serialized_an_trees
 
-
-func serialize_node_editor_metadata(graph_edit: CHANE_AssetNodeGraphEdit) -> Dictionary:
+func serialize_node_editor_metadata(editor: CHANE_AssetNodeEditor) -> Dictionary:
     var serialized_node_meta: Dictionary = {}
-    var root_gn: = graph_edit.get_root_graph_node()
-    if not root_gn:
-        push_error("Serialize Node Editor Metadata: Root node graph node not found")
-        return {}
-    var fallback_pos: = get_serialize_offset_scaled_pos(root_gn.position_offset - Vector2(200, 200))
+    var root_an_pos: = editor.asset_node_aux_data[editor.root_asset_node.an_node_id].position
+    var fallback_pos: = get_serialize_offset_scaled_pos(root_an_pos - Vector2(200, 200))
     
-    var an_owners: Dictionary[HyAssetNode, GraphNode] = {}
-    for gn in graph_edit.get_children():
-        if not gn is CustomGraphNode:
-            continue
-        if not gn.get_meta("is_special_gn", false):
-            #prints("gn: %s" % gn.name, "non-special", "an_id: %s" % gn.get_meta("hy_asset_node_id", ""))
-            var an_id: String = gn.get_meta("hy_asset_node_id", "")
-            assert(graph_edit.an_lookup.has(an_id), "Serialize Node Editor Metadata: Asset node not found for graph node %s with id %s" % [gn.name, an_id])
-            if graph_edit.an_lookup.has(an_id):
-                an_owners[graph_edit.an_lookup[an_id]] = gn
-        else:
-            var owned_ans: Array[HyAssetNode] = gn.get_own_asset_nodes()
-            #prints("gn: %s" % gn.name, "special", "owned_ans: %s" % [owned_ans.map(func(an): return an.an_node_id)])
-            for owned_an in gn.get_own_asset_nodes():
-                an_owners[owned_an] = gn
+    for an_id in editor.asset_node_aux_data:
+        var aux: = editor.asset_node_aux_data[an_id]
+        var an: = editor.all_asset_nodes[an_id]
+        serialized_node_meta[an_id] = serialize_an_metadata(an, aux.position)
 
-    for an in graph_edit.all_asset_nodes:
-        if OS.has_feature("debug"):
-            if not an_owners.has(an):
-                push_error("Serialize Node Editor Metadata: Asset node %s not found in an_owners" % an.an_node_id)
-                print_debug("Serialize Node Editor Metadata: Asset node %s not found in an_owners" % an.an_node_id)
-
-        var owner_gn: GraphNode = an_owners.get(an, null)
-        if not owner_gn:
-            # Fallback in-case no position can be determinded
-            serialize_an_metadata_into(an, fallback_pos, serialized_node_meta)
-            continue
-        # Let the owning graph node determine the position to use
-        owner_gn.add_an_metadata_into(an, self, serialized_node_meta)
-
-    var serialized_metadata: Dictionary = {
-        MetadataKeys.NodesMeta: serialized_node_meta,
-    }
+    var serialized_metadata: Dictionary = { MetadataKeys.NodesMeta: serialized_node_meta }
 
     serialized_metadata[MetadataKeys.FloatingRoots] = serialize_multiple_an_trees(graph_edit.floating_tree_roots)
 
-    serialized_metadata[MetadataKeys.WorkspaceId] = graph_edit.hy_workspace_id
+    serialized_metadata[MetadataKeys.WorkspaceId] = editor.hy_workspace_id
     
     serialized_metadata[MetadataKeys.Groups] = serialize_graph_edit_groups(graph_edit)
     
     # include other metadata we found in the file but don't do anything with
-    for other_key in graph_edit.all_meta.keys():
+    for other_key in editor.raw_metadata.keys():
         if serialized_metadata.has(other_key):
             continue
-        serialized_metadata[other_key] = graph_edit.all_meta[other_key]
+        serialized_metadata[other_key] = editor.raw_metadata[other_key]
     return serialized_metadata
 
 func serialize_graph_edit_groups(graph_edit: CHANE_AssetNodeGraphEdit) -> Array[Dictionary]:

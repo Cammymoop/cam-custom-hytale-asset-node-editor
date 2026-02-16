@@ -83,6 +83,15 @@ func add_an_metadata_into(for_an: HyAssetNode, serializer: CHANE_HyAssetNodeSeri
         index_of_an = 0
     into_dict[for_an.an_node_id] = serializer.serialize_an_metadata(for_an, get_phantom_gn_pos(index_of_an))
 
+func get_owned_an_positions() -> Dictionary[String, Vector2]:
+    var an_positions: Dictionary[String, Vector2] = {
+        asset_node.an_node_id: position_offset
+    }
+    var idx: int = 0
+    for owned_an in asset_node.get_all_connected_nodes(POINTS_CONNECTION_NAME):
+        an_positions[owned_an.an_node_id] = get_phantom_gn_pos(idx)
+    return an_positions
+
 func get_phantom_gn_pos(phantom_index: int) -> Vector2:
     var base_pos: Vector2 = position_offset + child_position_offset + Vector2(size.x, 0)
     return base_pos + child_position_increment * phantom_index

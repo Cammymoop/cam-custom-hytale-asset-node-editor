@@ -19,6 +19,15 @@ func rect2_clamp_rect2_pos(limit_rect: Rect2, rect: Rect2) -> Vector2:
     
     return final_clamped
 
+func get_plain_version() -> String:
+    return "v%s" % ProjectSettings.get_setting("application/config/version")
+
+func get_version_number_string() -> String:
+    var prerelease_string: = " Alpha"
+    if OS.has_feature("debug"):
+        prerelease_string = " Alpha (Debug)"
+    return get_plain_version() + prerelease_string
+
 func random_str(length: int) -> String:
     var the_str: = ""
     while length > 4:

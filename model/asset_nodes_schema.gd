@@ -109,10 +109,14 @@ func _unknown_output_type_inference(node_id: String) -> String:
         print_debug("Unknown node type for ID prefix: %s" % id_prefix)
     return node_type
 
+func normalize_asset_node_type(asset_node_type: String) -> String:
+    if not asset_node_type or asset_node_type not in node_schema:
+        return "Unknown"
+    return asset_node_type
+
 func get_id_prefix_for_node_type(node_type: String) -> String:
     if node_type == "Unknown" or node_type not in node_schema:
-        print_debug("Unknown node type, no ID prefix")
-        return ""
+        return "GenericAssetNode"
 
     return node_schema[node_type].get("id_prefix_override", node_type)
 

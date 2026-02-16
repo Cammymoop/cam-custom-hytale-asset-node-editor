@@ -11,6 +11,10 @@ var settings_syncer: SettingsSyncer = null
 var is_in_graph_group: bool = false
 var in_group_with_theme: Theme = null
 
+@export_storage var slots_start_at_index: int = 0
+@export_storage var num_outputs: int = 0
+@export_storage var num_inputs: int = 0
+
 # For usage in the inpector at runtime to jump to the asset node easier
 @export_custom(PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR)
 var found_asset_node: HyAssetNode = null
@@ -42,11 +46,10 @@ func fix_duplicate_settings_syncer(asset_node: HyAssetNode) -> void:
     assert(settings_syncer != null, "SettingsSyncer not found in duplicate graph node")
     settings_syncer.set_asset_node(asset_node)
 
-func add_an_metadata_into(for_an: HyAssetNode, serializer: CHANE_HyAssetNodeSerializer, into_dict: Dictionary) -> void:
-    if for_an.an_node_id != get_meta("hy_asset_node_id", ""):
-        push_warning("add_an_metadata_into: for_an %s is not the same as the asset node %s" % [for_an.an_node_id, get_meta("hy_asset_node_id", "")])
-        return
-    serializer.serialize_an_metadata_into(for_an, position_offset, into_dict)
+func get_owned_an_positions() -> Dictionary[String, Vector2]:
+    if not get_meta("hy_asset_node_id", ""):
+        return {}
+    return { get_meta("hy_asset_node_id", ""): position_offset }
 
 func _gui_input(event: InputEvent) -> void:
     if not event is InputEventMouseButton:
@@ -73,6 +76,7 @@ func set_node_type_schema(schema: Dictionary) -> void:
     node_type_schema = schema
 
 func update_slot_types(type_id_lookup: Dictionary[String, int]) -> void:
+    update_enabled_slots()
     if not node_type_schema:
         return
     if not node_type_schema.get("no_output", false):
@@ -88,6 +92,17 @@ func update_slot_types(type_id_lookup: Dictionary[String, int]) -> void:
         var conn_value_type: String = node_type_schema["connections"][conn_names[conn_idx]].get("value_type", "")
         if conn_value_type:
             set_connection_port_type(conn_idx, type_id_lookup[conn_value_type])
+
+func update_enabled_slots() -> void:
+    var slot_idx: int = 0
+    for child in get_children():
+        if not child.visible or not child is Control:
+            continue
+        if slot_idx < num_outputs:
+            set_slot_enabled_left(slot_idx, true)
+        if slot_idx < num_inputs:
+            set_slot_enabled_right(slot_idx, true)
+        slot_idx += 1
 
 func get_current_connection_list() -> Array[String]:
     if not node_type_schema:
