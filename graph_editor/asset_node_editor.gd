@@ -313,3 +313,9 @@ func connect_graph_nodes(from_gn: CustomGraphNode, from_port: int, to_gn: Custom
     
     #if to_an in floating_tree_roots:
         #floating_tree_roots.erase(to_an)
+
+func get_all_groups() -> Array[GraphFrame]:
+    var all_groups: Array[GraphFrame] = []
+    for graph in graphs:
+        all_groups.append_array(graph.get_all_groups())
+    return all_groups

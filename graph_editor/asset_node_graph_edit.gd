@@ -143,6 +143,7 @@ func get_unique_an_id(id_prefix: String = "") -> String:
     return CHANE_HyAssetNodeSerializer.get_unique_an_id(id_prefix)
 
 func _ready() -> void:
+    print("a sentence with spaces".replace(" ", "_"))
     serializer = CHANE_HyAssetNodeSerializer.new()
     serializer.name = "ANSerializer"
     add_child(serializer, true)

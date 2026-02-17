@@ -651,11 +651,11 @@ func serialize_node_editor_metadata(editor: CHANE_AssetNodeEditor) -> Dictionary
 
     var serialized_metadata: Dictionary = { MetadataKeys.NodesMeta: serialized_node_meta }
 
-    serialized_metadata[MetadataKeys.FloatingRoots] = serialize_multiple_an_trees(graph_edit.floating_tree_roots)
+    serialized_metadata[MetadataKeys.FloatingRoots] = serialize_multiple_an_trees(editor.floating_tree_roots)
 
     serialized_metadata[MetadataKeys.WorkspaceId] = editor.hy_workspace_id
     
-    serialized_metadata[MetadataKeys.Groups] = serialize_graph_edit_groups(graph_edit)
+    serialized_metadata[MetadataKeys.Groups] = serialize_graph_edit_groups(editor)
     
     # include other metadata we found in the file but don't do anything with
     for other_key in editor.raw_metadata.keys():
@@ -664,8 +664,8 @@ func serialize_node_editor_metadata(editor: CHANE_AssetNodeEditor) -> Dictionary
         serialized_metadata[other_key] = editor.raw_metadata[other_key]
     return serialized_metadata
 
-func serialize_graph_edit_groups(graph_edit: CHANE_AssetNodeGraphEdit) -> Array[Dictionary]:
-    return serialize_groups(graph_edit.get_all_groups())
+func serialize_graph_edit_groups(editor: CHANE_AssetNodeEditor) -> Array[Dictionary]:
+    return serialize_groups(editor.get_all_groups())
 
 func serialize_groups(the_groups: Array[GraphFrame]) -> Array[Dictionary]:
     var serialized_groups: Array[Dictionary] = []
