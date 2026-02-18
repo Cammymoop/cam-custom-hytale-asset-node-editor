@@ -76,3 +76,13 @@ func undo() -> void:
     undo_redo.undo()
 func redo() -> void:
     undo_redo.redo()
+    
+func get_undo_action_name() -> String:
+    if not undo_redo.has_undo():
+        return ""
+    return undo_redo.get_current_action_name()
+
+func get_redo_action_name() -> String:
+    if not undo_redo.has_redo():
+        return ""
+    return undo_redo.get_action_name(undo_redo.get_current_action() + 1)

@@ -72,25 +72,12 @@ func _ready() -> void:
     export_as_edit.focus_exited.connect(check_show_export_as)
 
 # Position serialization for all owned asset nodes
-func add_an_metadata_into(for_an: HyAssetNode, serializer: CHANE_HyAssetNodeSerializer, into_dict: Dictionary) -> void:
-    if for_an == asset_node:
-        serializer.serialize_an_metadata_into(for_an, position_offset, into_dict)
-    if OS.has_feature("debug"):
-        var my_ans: = get_own_asset_nodes()
-        assert(for_an in my_ans, "for_an %s not in my_ans %s" % [for_an.an_node_id, my_ans.map(func(an): return an.an_node_id)])
-    var index_of_an: int = get_own_asset_nodes().find(for_an)
-    if index_of_an == -1:
-        index_of_an = 0
-    into_dict[for_an.an_node_id] = serializer.serialize_an_metadata(for_an, get_phantom_gn_pos(index_of_an))
-
-func get_owned_an_positions() -> Dictionary[String, Vector2]:
-    var an_positions: Dictionary[String, Vector2] = {
-        asset_node.an_node_id: position_offset
-    }
-    var idx: int = 0
-    for owned_an in asset_node.get_all_connected_nodes(POINTS_CONNECTION_NAME):
-        an_positions[owned_an.an_node_id] = get_phantom_gn_pos(idx)
-    return an_positions
+func update_aux_positions(aux_data: Dictionary[String, HyAssetNode.AuxData]) -> void:
+    aux_data[asset_node.an_node_id].position = position_offset
+    var owned_ans: Array[HyAssetNode] = get_own_asset_nodes()
+    for idx in owned_ans.size():
+        var sub_an: HyAssetNode = owned_ans[idx]
+        aux_data[sub_an.an_node_id].position = get_phantom_gn_pos(idx)
 
 func get_phantom_gn_pos(phantom_index: int) -> Vector2:
     var base_pos: Vector2 = position_offset + child_position_offset + Vector2(size.x, 0)
@@ -103,19 +90,23 @@ func setup_ports() -> void:
     set_slot_enabled_left(0, true)
     set_slot_type_left(0, graph_edit.type_id_lookup["Curve"])
 
-func get_current_connection_list() -> Array[String]:
-    return []
-
-func filter_child_connection_nodes(_conn_name: String) -> Array[HyAssetNode]:
-    return []
-
 func get_own_asset_nodes() -> Array[HyAssetNode]:
     var ans: Array[HyAssetNode] = [asset_node]
     ans.append_array(asset_node.get_all_connected_nodes(POINTS_CONNECTION_NAME))
     return ans
 
+func get_all_connections() -> Dictionary[String, Array]:
+    var connections: Dictionary[String, Array] = {}
+    return connections
+
+func get_all_nodes_on_connection(_conn_name: String) -> Array[HyAssetNode]:
+    var conn_nodes: Array[HyAssetNode] = []
+    return conn_nodes
+
 # end REQUIRED METHODS FOR SPECIAL GRAPH NODES::
 
+func get_excluded_connection_names() -> Array[String]:
+    return [POINTS_CONNECTION_NAME]
 
 func on_resized() -> void:
     last_size[cur_mode] = size

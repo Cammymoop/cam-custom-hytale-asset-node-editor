@@ -99,9 +99,29 @@ func resolve_asset_node_type(type_key: String, output_value_type: String, node_i
 func infer_asset_node_type_from_id(node_id: String) -> String:
     return _unknown_output_type_inference(node_id)
 
-func get_input_conn_idx_for_name(node_type: String, conn_name: String) -> int:
+# Schema info retrieval helpers
+func get_output_value_type(node_type: String) -> String:
+    if node_type == "Unknown":
+        return ""
     assert(node_type in node_schema, "Node type %s not found in node schema" % node_type)
-    return node_schema[node_type].get("connections", {}).keys().find(conn_name)
+    if node_schema[node_type].get("no_output", false):
+        return ""
+    return node_schema[node_type]["output_value_type"]
+
+func get_input_conn_idx_of_name(node_type: String, conn_name: String) -> int:
+    return safe_get_connection_info(node_type, "connections").keys().find(conn_name)
+
+func get_input_conn_names(node_type: String) -> Array[String]:
+    return safe_get_connection_info(node_type, "connections").keys()
+
+func get_ad_hoc_connection_list(asset_node: HyAssetNode) -> Array[String]:
+    var conn_list: Array[String] = []
+    if asset_node.an_type in node_schema:
+        conn_list.append_array(node_schema[asset_node.an_type].get("connections", {}).keys())
+    for conn_name in asset_node.connection_list:
+        if not conn_list.has(conn_name):
+            conn_list.append(conn_name)
+    return conn_list
 
 func get_input_conn_name_for_idx(node_type: String, conn_idx: int) -> String:
     assert(node_type in node_schema, "Node type %s not found in node schema" % node_type)
@@ -125,6 +145,32 @@ func get_num_output_connections(node_type: String) -> int:
 func get_num_input_connections(node_type: String) -> int:
     assert(node_type in node_schema, "Node type %s not found in node schema" % node_type)
     return node_schema[node_type].get("connections", {}).size()
+
+func get_input_conn_is_multi_for_idx(node_type: String, conn_idx: int, default_value: bool) -> bool:
+    return safe_get_connection_info_item_by_idx(node_type, conn_idx, "multi", default_value)
+
+func get_input_conn_is_multi_for_name(node_type: String, conn_name: String, default_value: bool) -> bool:
+    return safe_get_connection_info_item(node_type, conn_name, "multi", default_value)
+
+func safe_get_connection_info_for_idx(node_type: String, conn_idx: int) -> Dictionary:
+    var conn_name: = get_input_conn_name_for_idx(node_type, conn_idx)
+    if not conn_name:
+        return {}
+    return node_schema[node_type].get("connections", {}).get(conn_name, {})
+
+func safe_get_connection_info(node_type: String, conn_name: String) -> Dictionary:
+    assert(node_type in node_schema, "Node type %s not found in node schema" % node_type)
+    return node_schema[node_type].get("connections", {}).get(conn_name, {})
+
+func safe_get_connection_info_item_by_idx(node_type: String, conn_idx: int, key: String, default_value: Variant) -> Variant:
+    var conn_name: = get_input_conn_name_for_idx(node_type, conn_idx)
+    if not conn_name:
+        return default_value
+    return node_schema[node_type]["connections"][conn_name].get(key, default_value)
+
+func safe_get_connection_info_item(node_type: String, conn_name: String, key: String, default_value: Variant) -> Variant:
+    assert(node_type in node_schema, "Node type %s not found in node schema" % node_type)
+    return node_schema[node_type].get("connections", {}).get(conn_name, {}).get(key, default_value)
 
 ## Needed for floating node roots in the current format
 func _unknown_output_type_inference(node_id: String) -> String:

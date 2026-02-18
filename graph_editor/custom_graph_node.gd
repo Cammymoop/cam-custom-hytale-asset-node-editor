@@ -46,11 +46,6 @@ func fix_duplicate_settings_syncer(asset_node: HyAssetNode) -> void:
     assert(settings_syncer != null, "SettingsSyncer not found in duplicate graph node")
     settings_syncer.set_asset_node(asset_node)
 
-func get_owned_an_positions() -> Dictionary[String, Vector2]:
-    if not get_meta("hy_asset_node_id", ""):
-        return {}
-    return { get_meta("hy_asset_node_id", ""): position_offset }
-
 func _gui_input(event: InputEvent) -> void:
     if not event is InputEventMouseButton:
         return
@@ -104,13 +99,25 @@ func update_enabled_slots() -> void:
             set_slot_enabled_right(slot_idx, true)
         slot_idx += 1
 
+func update_aux_positions(aux_data: Dictionary[String, HyAssetNode.AuxData]) -> void:
+    var an_id: String = get_meta("hy_asset_node_id", "")
+    if an_id:
+        aux_data[an_id].position = position_offset
+
+func get_excluded_connection_names() -> Array[String]:
+    return []
+
 func get_current_connection_list() -> Array[String]:
-    if not node_type_schema:
-        return []
-    return Array(node_type_schema.get("connections", {}).keys(), TYPE_STRING, "", null)
+    var conn_names: Array[String] = []
+    var excluded_conn_names: Array[String] = get_excluded_connection_names()
+    conn_names.assign(node_type_schema.get("connections", {}).keys().filter(func(conn_name): return not conn_name in excluded_conn_names))
+    return conn_names
+
+func get_current_in_connection_count() -> int:
+    return get_current_connection_list().size()
 
 func get_current_connection_value_types() -> Array[String]:
-    var conn_names: Array = get_current_connection_list()
+    var conn_names: Array[String] = get_current_connection_list()
     var conn_value_types: Array[String] = []
     for conn_name in conn_names:
         conn_value_types.append(node_type_schema["connections"][conn_name].get("value_type", ""))

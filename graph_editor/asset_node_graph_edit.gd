@@ -17,10 +17,6 @@ var serializer: CHANE_HyAssetNodeSerializer
 var parsed_has_no_positions: = false
 var loaded: = false
 
-var cur_file_name: = ""
-var cur_file_path: = ""
-var has_saved_to_cur_file: = false
-
 var global_gn_counter: int = 0
 
 const DEFAULT_HY_WORKSPACE_ID: String = "HytaleGenerator - Biome"
@@ -79,7 +75,6 @@ var output_port_drop_offset: Vector2 = Vector2(2, -34)
 var input_port_drop_first_offset: Vector2 = Vector2(-2, -34)
 var input_port_drop_additional_offset: Vector2 = Vector2(0, -19)
 
-var _undo_manager: UndoRedo = UndoRedo.new()
 var undo_tracked_nodes: Array[Node] = []
 var multi_connection_change: bool = false
 var cur_connection_added_ges: Array[GraphElement] = []
@@ -290,123 +285,38 @@ func _gui_input(event: InputEvent) -> void:
         return
 
 func _connection_request(from_gn_name: StringName, from_port: int, to_gn_name: StringName, to_port: int) -> void:
-    _add_connection(from_gn_name, from_port, to_gn_name, to_port)
+    add_connection(from_gn_name, from_port, to_gn_name, to_port)
 
-func add_multiple_connections(conns_to_add: Array[Dictionary], with_undo: bool = true) -> void:
-    var self_multi: = not multi_connection_change
-    multi_connection_change = true
-    for conn_to_add in conns_to_add:
-        add_connection(conn_to_add, with_undo)
+func add_multiple_connections(conns_to_add: Array[Dictionary]) -> void:
+    editor.connect_graph_nodes(conns_to_add, self)
 
-    if self_multi:
-        if with_undo:
-            create_undo_connection_change_step()
-        multi_connection_change = false
+func add_connection_info(connection_info: Dictionary) -> void:
+    editor.connect_graph_nodes([connection_info], self)
 
-func get_an_set_for_graph_nodes(gns: Array[GraphNode]) -> Array[HyAssetNode]:
-    var ans: Array[HyAssetNode] = []
-    for gn in gns:
-        ans.append_array(get_gn_own_asset_nodes(gn))
-    return ans
-
-func add_connection(connection_info: Dictionary, with_undo: bool = true) -> void:
-    _add_connection(connection_info["from_node"], connection_info["from_port"], connection_info["to_node"], connection_info["to_port"], with_undo)
-
-func _add_connection(from_gn_name: StringName, from_port: int, to_gn_name: StringName, to_port: int, with_undo: bool = true) -> void:
-    var old_multi_conn_change: = multi_connection_change
-    # set multi_connection_change so removed connections get added as part of the same undo step
-    multi_connection_change = true
-
-    var from_gn: GraphNode = get_node(NodePath(from_gn_name))
-    var to_gn: GraphNode = get_node(NodePath(to_gn_name))
-    
-    #editor.connect_graph_nodes(from_gn, from_port, to_gn, to_port, self)
-    
-    # disconnect any existing outputs (only allowing one output connection)
-    #var existing_output_conn_infos: = raw_out_connections(to_gn)
-    #for existing_output in existing_output_conn_infos:
-        #remove_connection(existing_output)
-    
-    #if not from_an or not to_an:
-        #print_debug("Warning: From or to asset node not found")
-        #connect_node(from_gn_name, from_port, to_gn_name, to_port)
-        #return
-
-    #if from_an.an_type not in SchemaManager.schema.node_schema:
-        #print_debug("Warning: From node type %s not found in schema" % from_an.an_type)
-        #var conn_name: String = from_an.connection_list[from_port]
-        #from_an.append_node_to_connection(conn_name, to_an)
-    #else:
-        #var conn_name: String = from_an.connection_list[from_port]
-        #var connect_is_multi: bool = SchemaManager.schema.node_schema[from_an.an_type]["connections"][conn_name].get("multi", false)
-        #sort_all_an_connections()
-        #if connect_is_multi or from_an.num_connected_asset_nodes(conn_name) == 0:
-            #from_an.append_node_to_connection(conn_name, to_an)
-        #else:
-            #var prev_connected_node: HyAssetNode = from_an.get_connected_node(conn_name, 0)
-            #if prev_connected_node and editor.gn_lookup.has(prev_connected_node.an_node_id):
-                #_remove_connection(from_gn_name, from_port, editor.gn_lookup[prev_connected_node.an_node_id].name, 0)
-            #from_an.append_node_to_connection(conn_name, to_an)
-    
-    #if to_an in floating_tree_roots:
-        #floating_tree_roots.erase(to_an)
-
-    if with_undo:
-        cur_added_connections.append({
-            "from_node": from_gn_name,
-            "from_port": from_port,
-            "to_node": to_gn_name,
-            "to_port": to_port,
-        })
-
-    # restore multi_connection_change to whatever it was in the outer context
-    multi_connection_change = old_multi_conn_change
-    connect_node(from_gn_name, from_port, to_gn_name, to_port)
-    if with_undo and not multi_connection_change:
-        create_undo_connection_change_step()
+func add_connection(from_gn_name: StringName, from_port: int, to_gn_name: StringName, to_port: int) -> void:
+    add_connection_info({
+        "from_node": from_gn_name,
+        "from_port": from_port,
+        "to_node": to_gn_name,
+        "to_port": to_port,
+    })
 
 func _disconnection_request(from_gn_name: StringName, from_port: int, to_gn_name: StringName, to_port: int) -> void:
-    _remove_connection(from_gn_name, from_port, to_gn_name, to_port)
+    remove_connection(from_gn_name, from_port, to_gn_name, to_port)
 
-func remove_multiple_connections(conns_to_remove: Array[Dictionary], with_undo: bool = true) -> void:
-    var self_multi: = not multi_connection_change
-    multi_connection_change = true
-    for conn_to_remove in conns_to_remove:
-        remove_connection(conn_to_remove, with_undo)
+func remove_connection(from_gn_name: StringName, from_port: int, to_gn_name: StringName, to_port: int) -> void:
+    remove_multiple_connections([{
+        "from_node": from_gn_name,
+        "from_port": from_port,
+        "to_node": to_gn_name,
+        "to_port": to_port,
+    }])
 
-    if self_multi:
-        if with_undo:
-            create_undo_connection_change_step()
-        multi_connection_change = false
+func remove_connection_info(connection_info: Dictionary) -> void:
+    remove_multiple_connections([connection_info])
 
-func remove_connection(connection_info: Dictionary, with_undo: bool = true) -> void:
-    _remove_connection(connection_info["from_node"], connection_info["from_port"], connection_info["to_node"], connection_info["to_port"], with_undo)
-
-func disconnect_connection_info(conn_info: Dictionary) -> void:
-    disconnect_node(conn_info["from_node"], conn_info["from_port"], conn_info["to_node"], conn_info["to_port"])
-
-func _remove_connection(from_gn_name: StringName, from_port: int, to_gn_name: StringName, to_port: int, with_undo: bool = true) -> void:
-    disconnect_node(from_gn_name, from_port, to_gn_name, to_port)
-
-    var from_gn: GraphNode = get_node(NodePath(from_gn_name))
-    var to_gn: GraphNode = get_node(NodePath(to_gn_name))
-    var from_an: HyAssetNode = an_lookup.get(from_gn.get_meta("hy_asset_node_id", ""))
-    var from_connection_name: String = from_an.connection_list[from_port]
-    var to_an: HyAssetNode = an_lookup.get(to_gn.get_meta("hy_asset_node_id", ""))
-
-    if from_an and to_an:
-        from_an.remove_node_from_connection(from_connection_name, to_an)
-    
-    if with_undo:
-        cur_removed_connections.append({
-            "from_node": from_gn_name,
-            "from_port": from_port,
-            "to_node": to_gn_name,
-            "to_port": to_port,
-        })
-    floating_tree_roots.append(to_an)
-    if with_undo and not multi_connection_change:
-        create_undo_connection_change_step()
+func remove_multiple_connections(conns_to_remove: Array[Dictionary]) -> void:
+    editor.disconnect_graph_nodes(conns_to_remove, self)
 
 func remove_asset_node(asset_node: HyAssetNode) -> void:
     _erase_asset_node(asset_node)
@@ -428,7 +338,7 @@ func duplicate_and_add_asset_node(asset_node: HyAssetNode, new_gn: GraphNode = n
     
     var new_id_for_copy: = get_unique_an_id(id_prefix)
     var asset_node_copy: = asset_node.get_shallow_copy(new_id_for_copy)
-    _register_asset_node(asset_node_copy)
+    editor.register_asset_node(asset_node_copy)
     floating_tree_roots.append(asset_node_copy)
     if new_gn:
         editor.gn_lookup[asset_node_copy.an_node_id] = new_gn
@@ -437,7 +347,7 @@ func duplicate_and_add_asset_node(asset_node: HyAssetNode, new_gn: GraphNode = n
 
 func duplicate_and_add_filtered_an_tree(root_asset_node: HyAssetNode, asset_node_set: Array[HyAssetNode]) -> HyAssetNode:
     var new_root_an: HyAssetNode = duplicate_and_add_asset_node(root_asset_node)
-    var conn_names: Array[String] = root_asset_node.connection_list.duplicate()
+    var conn_names: Array[String] = root_asset_node.connection_list
     for conn_name in conn_names:
         for connected_an in root_asset_node.get_all_connected_nodes(conn_name):
             if connected_an not in asset_node_set:
@@ -447,32 +357,6 @@ func duplicate_and_add_filtered_an_tree(root_asset_node: HyAssetNode, asset_node
             new_root_an.append_node_to_connection(conn_name, new_an)
     
     return new_root_an
-
-func add_existing_asset_node(asset_node: HyAssetNode, gn: GraphNode = null) -> void:
-    if gn:
-        editor.register_asset_node_at(asset_node, gn.position_offset)
-    else:
-        editor.register_asset_node(asset_node)
-    #all_asset_nodes.append(asset_node)
-    #all_asset_node_ids.append(asset_node.an_node_id)
-    if not asset_node.an_node_id:
-        push_warning("Trying to add existing asset node with no ID")
-    else:
-        #an_lookup[asset_node.an_node_id] = asset_node
-        if gn:
-            editor.gn_lookup[asset_node.an_node_id] = gn
-
-func _register_asset_node(asset_node: HyAssetNode) -> void:
-    editor.register_asset_node(asset_node)
-    #if asset_node in all_asset_nodes:
-        #print_debug("Asset node %s already registered" % asset_node.an_node_id)
-    #else:
-        #all_asset_nodes.append(asset_node)
-    #if asset_node.an_node_id in all_asset_node_ids:
-        #print_debug("Asset node ID %s already registered" % asset_node.an_node_id)
-    #else:
-        #all_asset_node_ids.append(asset_node.an_node_id)
-    #an_lookup[asset_node.an_node_id] = asset_node
 
 func _delete_request(delete_ge_names: Array[StringName]) -> void:
     var ges_to_remove: Array[GraphElement] = []
@@ -505,17 +389,17 @@ func _connect_right_request(from_gn_name: StringName, from_port: int, dropped_lo
         "from_node": from_gn_name,
         "from_port": from_port,
     }
-    _connect_new_request(true, dropped_local_pos, connection_info)
+    _connect_new_request(true, from_gn_name, dropped_local_pos, connection_info)
 
 func _connect_left_request(to_gn_name: StringName, to_port: int, dropped_local_pos: Vector2) -> void:
     var connection_info: = {
         "to_node": to_gn_name,
         "to_port": to_port,
     }
-    _connect_new_request(false, dropped_local_pos, connection_info)
+    _connect_new_request(false, to_gn_name, dropped_local_pos, connection_info)
 
-func _connect_new_request(is_right: bool, at_local_pos: Vector2, connection_info: Dictionary) -> void:
-    var connecting_from_gn: CustomGraphNode = get_node(NodePath(connection_info["from_node" if is_right else "to_node"]))
+func _connect_new_request(is_right: bool, from_gn_name: String, at_local_pos: Vector2, connection_info: Dictionary) -> void:
+    var connecting_from_gn: CustomGraphNode = get_node(from_gn_name)
     var asset_node: HyAssetNode = editor.get_gn_main_asset_node(connecting_from_gn)
 
     var conn_value_type: String = ""
@@ -743,7 +627,7 @@ func save_copied_nodes_an_references() -> void:
     copied_nodes_ans.clear()
     for ge in copied_nodes:
         if ge is CustomGraphNode:
-            copied_nodes_ans.append_array(get_gn_own_asset_nodes(ge))
+            copied_nodes_ans.append_array(editor.get_gn_own_asset_nodes(ge))
 
 func _paste_request() -> void:
     var screen_center_pos: = get_viewport_rect().size / 2
@@ -789,22 +673,17 @@ func _paste_request_at(paste_local_pos: Vector2, paste_screen_relative: bool = f
         pasted_gn.position_offset += destination_offset
         snap_ge(pasted_gn)
         pasted_gn.selected = true
-    add_multiple_connections(new_connections_needed, false)
+    add_multiple_connections(new_connections_needed)
     
     cur_added_connections = new_connections_needed
     cur_connection_added_ges = pasted_nodes
-    create_undo_connection_change_step()
 
 func paste_from_external() -> void:
     var old_json_scale: = json_positions_scale
     json_positions_scale = Vector2.ONE
-    var screen_center_pos: Vector2 = get_center_pos_offset()
-    prints("screen center pos offset: %s" % [screen_center_pos])
-    var an_roots: Array[HyAssetNode] = get_an_roots_within_set(copied_external_ans)
+    var an_roots: Array[HyAssetNode] = editor.get_an_roots_within_set(copied_external_ans)
     floating_tree_roots.append_array(an_roots)
-    var added_gns: = make_and_position_graph_nodes_for_trees(an_roots, false, screen_center_pos)
-    var added_ges: Array[GraphElement] = []
-    added_ges.append_array(added_gns)
+    var added_ges: = editor.add_graph_nodes_for_new_asset_node_trees(self, an_roots, get_center_pos_offset())
     json_positions_scale = old_json_scale
     
     var added_groups: Array[GraphFrame] = []
@@ -814,11 +693,7 @@ func paste_from_external() -> void:
         added_ges.append(new_group)
     add_nodes_inside_to_groups(added_groups, added_ges, true)
 
-    select_ges(added_ges)
-    
-    cur_added_connections = get_internal_connections_for_gns(added_gns)
-    cur_connection_added_ges.assign(added_ges)
-    create_undo_connection_change_step()
+    #select_ges(added_ges)
     discard_copied_nodes()
 
 func add_nodes_inside_to_groups(groups: Array[GraphFrame], ges: Array[GraphElement], with_undo: bool, empty_no_shrink: bool = true) -> void:
@@ -860,7 +735,7 @@ func _add_pasted_nodes(ges: Array[GraphElement], asset_node_set: Array[HyAssetNo
     if not make_duplicates:
         # TODO: Make a out of tree node set container helper thing to better handle keeping these around or just change functionality
         # so that any paste that isn't able to be duplicated from existing nodes goes through the serialization/deserialization process instead
-        var pasted_an_roots: Array[HyAssetNode] = get_an_roots_within_set(asset_node_set)
+        var pasted_an_roots: Array[HyAssetNode] = editor.get_an_roots_within_set(asset_node_set)
         floating_tree_roots.append_array(pasted_an_roots)
         pasted_ges = ges
         for ge in ges:
@@ -886,7 +761,7 @@ func duplicate_graph_node(gn: CustomGraphNode, allowed_an_list: Array[HyAssetNod
     var duplicate_gn: CustomGraphNode
     if editor.gn_is_special(gn):
         if not allowed_an_list:
-            allowed_an_list = get_gn_own_asset_nodes(gn)
+            allowed_an_list = editor.get_gn_own_asset_nodes(gn)
         duplicate_gn = special_gn_factory.make_duplicate_special_gn(gn, allowed_an_list)
     else:
         if not gn.get_meta("hy_asset_node_id", ""):
@@ -906,7 +781,7 @@ func init_duplicate_graph_node(duplicate_gn: CustomGraphNode, original_gn: Custo
     duplicate_gn.ignore_invalid_connection_type = original_gn.ignore_invalid_connection_type
     duplicate_gn.resizable = original_gn.resizable
     duplicate_gn.title = original_gn.title
-    duplicate_gn.name = get_duplicate_gn_name(original_gn.name)
+    duplicate_gn.name = editor.get_duplicate_ge_name(original_gn.name)
 
     #if not editor.gn_is_special(duplicate_gn) and duplicate_gn.get_meta("hy_asset_node_id", ""):
         #setup_synchers_for_duplicate_graph_node(duplicate_gn)
@@ -941,10 +816,7 @@ func clear_graph() -> void:
     
     cancel_connection_cut()
 
-    _undo_manager.clear_history()
     discard_copied_nodes()
-
-    global_gn_counter = 0
 
 func _clear_ge_children() -> void:
     for child in get_children():
@@ -963,117 +835,50 @@ func scroll_to_pos_offset(pos_offset: Vector2) -> void:
 func get_scroll_of_pos_offset_centered(pos_offset: Vector2) -> Vector2:
     return pos_offset * zoom - (size / 2) 
 
-func get_node_position_from_aux(node_id: String) -> Vector2:
-    if not editor.asset_node_aux_data.has(node_id):
-        push_warning("Asset node %s not found in aux data" % node_id)
-        return Vector2.ZERO
-    return editor.asset_node_aux_data[node_id].position
-
-func register_tree_result_ans(tree_result: CHANE_HyAssetNodeSerializer.TreeParseResult) -> void:
-    for an in tree_result.all_nodes:
-        _register_asset_node(an)
-
-
 func make_json_groups(group_datas: Array[Dictionary]) -> void:
     for group_data in group_datas:
         deserialize_and_add_group_and_attach_graph_nodes(group_data)
     refresh_graph_elements_in_frame_status()
     
-func make_and_position_graph_nodes_for_trees(an_roots: Array[HyAssetNode], from_loaded: bool, add_offset: Vector2 = Vector2.ZERO) -> Array[CustomGraphNode]:
-    var manually_position: bool = from_loaded and not editor.use_json_positions
-    var base_tree_pos: = Vector2(0, 100)
-    var all_added_gns: Array[CustomGraphNode] = []
-    for tree_root_node in an_roots:
-        var new_graph_nodes: Array[CustomGraphNode] = new_graph_nodes_for_tree(tree_root_node)
-        all_added_gns.append_array(new_graph_nodes)
-        for new_gn in new_graph_nodes:
-            add_graph_node_child(new_gn)
-            if manually_position:
-                new_gn.position_offset = Vector2(0, -500)
-            if add_offset:
-                new_gn.position_offset += add_offset
-        
-        if manually_position:
-            var last_y: int = move_and_connect_children(tree_root_node.an_node_id, base_tree_pos)
-            base_tree_pos.y = last_y + 40
-        else:
-            connect_children(new_graph_nodes[0])
-        
-        if not from_loaded:
-            snap_ges(new_graph_nodes)
-    return all_added_gns
-    
-func connect_children(graph_node: CustomGraphNode) -> void:
-    var connection_names: Array[String] = get_graph_connections_for(graph_node)
-    for conn_idx in connection_names.size():
-        var connected_graph_nodes: Array[GraphNode] = get_graph_connected_graph_nodes(graph_node, connection_names[conn_idx])
-        for connected_gn in connected_graph_nodes:
-            connect_node(graph_node.name, conn_idx, connected_gn.name, 0)
-            connect_children(connected_gn)
+func manually_position_new_graph_node_trees(root_asset_nodes: Array[HyAssetNode], new_graph_nodes: Array[CustomGraphNode], start_at_pos: Vector2) -> void:
+    var ans_to_gns: Dictionary[HyAssetNode, CustomGraphNode] = {}
+    for new_gn in new_graph_nodes:
+        ans_to_gns[editor.get_gn_main_asset_node(new_gn)] = new_gn
 
-func move_and_connect_children(asset_node_id: String, pos: Vector2) -> int:
-    var graph_node: = editor.gn_lookup[asset_node_id]
-    var asset_node: = an_lookup[asset_node_id]
+    var base_tree_pos: = start_at_pos
+    for tree_root_node in root_asset_nodes:
+        var last_y: int = auto_move_children(tree_root_node, ans_to_gns, base_tree_pos)
+        base_tree_pos.y = last_y + 40
+    snap_ges(ans_to_gns.values())
+
+func auto_move_children(asset_node: HyAssetNode, ans_to_gns: Dictionary, pos: Vector2) -> int:
+    var graph_node: = ans_to_gns[asset_node] as CustomGraphNode
     graph_node.position_offset = pos
 
     var child_pos: = pos + (Vector2.RIGHT * (graph_node.size.x + 40))
-    var connection_names: Array[String] = asset_node.connection_list.duplicate()
+    var connection_names: Array[String] = asset_node.connection_list
 
     for conn_idx in connection_names.size():
         var conn_name: = connection_names[conn_idx]
-        for connected_node_idx in asset_node.num_connected_asset_nodes(conn_name):
-            var conn_an: = asset_node.get_connected_node(conn_name, connected_node_idx)
-            if not conn_an:
-                continue
-            var conn_gn: = editor.gn_lookup[conn_an.an_node_id]
+        for connected_an in asset_node.get_all_connected_nodes(conn_name):
+            var conn_gn: = ans_to_gns.get(connected_an, null) as CustomGraphNode
             if not conn_gn:
-                print_debug("Warning: Graph Node for Asset Node %s not found" % conn_an.an_node_id)
                 continue
 
-            if conn_an.connection_list.size() > 0:
-                child_pos.y = move_and_connect_children(conn_an.an_node_id, child_pos)
+            if connected_an.connection_list.size() > 0:
+                child_pos.y = auto_move_children(connected_an, ans_to_gns, child_pos)
             else:
                 conn_gn.position_offset = child_pos
                 child_pos.y += conn_gn.size.y + 40
-            connect_node(graph_node.name, conn_idx, conn_gn.name, 0)
     
     return int(child_pos.y)
 
-func new_graph_nodes_for_tree(tree_root_node: HyAssetNode) -> Array[CustomGraphNode]:
-    return _recursive_new_graph_nodes(tree_root_node, tree_root_node)
-
-func _recursive_new_graph_nodes(at_asset_node: HyAssetNode, root_asset_node: HyAssetNode) -> Array[CustomGraphNode]:
-    var new_graph_nodes: Array[CustomGraphNode] = []
-
-    var aux: = editor.asset_node_aux_data[at_asset_node.an_node_id]
-    var this_gn: = editor.make_new_graph_node_for_an(at_asset_node, aux.position)
-    new_graph_nodes.append(this_gn)
-
-    for conn_name in get_graph_connections_for(this_gn):
-        var connected_nodes: Array[HyAssetNode] = get_graph_connected_asset_nodes(this_gn, conn_name)
-        for connected_asset_node in connected_nodes:
-            new_graph_nodes.append_array(_recursive_new_graph_nodes(connected_asset_node, root_asset_node))
-    return new_graph_nodes
-
-func get_graph_connections_for(graph_node: CustomGraphNode) -> Array[String]:
-    if editor.gn_is_special(graph_node):
-        return graph_node.get_current_connection_list()
-    else:
-        var asset_node: = editor.get_gn_main_asset_node(graph_node)
-        return asset_node.connection_list
-
 func get_graph_connected_asset_nodes(graph_node: CustomGraphNode, conn_name: String) -> Array[HyAssetNode]:
     if editor.gn_is_special(graph_node):
-        return graph_node.filter_child_connection_nodes(conn_name)
+        return graph_node.get_non_owned_connected_asset_nodes(conn_name)
     else:
         var asset_node: = editor.get_gn_main_asset_node(graph_node)
         return asset_node.get_all_connected_nodes(conn_name)
-
-func get_gn_own_asset_nodes(graph_node: CustomGraphNode, extra_asset_nodes: Array[HyAssetNode] = []) -> Array[HyAssetNode]:
-    if editor.gn_is_special(graph_node):
-        return graph_node.get_own_asset_nodes()
-    else:
-        return [safe_get_an_from_gn(graph_node, extra_asset_nodes)]
 
 func get_internal_connections_for_gns(gns: Array[CustomGraphNode]) -> Array[Dictionary]:
     var internal_connections: Array[Dictionary] = []
@@ -1085,27 +890,6 @@ func get_internal_connections_for_gns(gns: Array[CustomGraphNode]) -> Array[Dict
                     internal_connections.append(conn_info)
     return internal_connections
 
-func get_all_connections_for_graph_elements(ges: Array[GraphElement]) -> Array[Dictionary]:
-    var ge_connections: Array[Dictionary] = []
-    var added_gn_names: Array[String] = []
-    for ge in ges:
-        if not ge is CustomGraphNode:
-            continue
-        for conn_info in raw_connections(ge):
-            if conn_info["from_node"] in added_gn_names or conn_info["to_node"] in added_gn_names:
-                continue
-            ge_connections.append(conn_info)
-        added_gn_names.append(ge.name)
-    return ge_connections
-
-
-func get_an_roots_within_set(asset_node_set: Array[HyAssetNode]) -> Array[HyAssetNode]:
-    var root_ans: Array[HyAssetNode] = asset_node_set.duplicate()
-    for parent_an in asset_node_set:
-        for child_an in parent_an.connected_asset_nodes.values():
-            if child_an in root_ans:
-                root_ans.erase(child_an)
-    return root_ans
 
 func get_graph_connected_graph_nodes(graph_node: CustomGraphNode, conn_name: String) -> Array[GraphNode]:
     var connected_asset_nodes: Array[HyAssetNode] = get_graph_connected_asset_nodes(graph_node, conn_name)
@@ -1214,11 +998,10 @@ func do_connection_cut() -> void:
                 if not connection_at_point:
                     break
                 num_cut += 1
-                remove_connection(connection_at_point)
+                remove_connection_info(connection_at_point)
         prev_cut_point = cut_global_pos
     
     if num_cut > 0:
-        create_undo_connection_change_step()
         multi_connection_change = false
 
     #if _first_cut_:
@@ -1356,7 +1139,7 @@ func on_begin_node_move() -> void:
             if parent_group not in selected_for_move:
                 remove_ge_from_group(ge, parent_group, true)
 
-    var undo_step: GraphUndoStep = _undo_manager.start_or_continue_graph_undo_step("Move Nodes", self)
+    var undo_step: = editor.undo_manager.start_or_continue_graph_undo_step("Move Nodes", self)
     undo_step.moved_graph_elements_from = moved_nodes_old_positions
     var resized_ges: Dictionary[GraphElement, Vector2] = {}
     for group in moved_groups_old_sizes:
@@ -1453,12 +1236,12 @@ func on_end_node_move() -> void:
     _end_node_move_deferred.call_deferred()
 
 func _end_node_move_deferred() -> void:
-    var selected_nodes: Array[GraphElement] = get_selected_ges()
+    var selected_ges: Array[GraphElement] = get_selected_ges()
 
-    if selected_nodes.size() == 1 and selected_nodes[0] is CustomGraphNode:
-        var gn_rect: = selected_nodes[0].get_global_rect().grow(-8).abs()
-        var connections_overlapped: = get_connections_intersecting_with_rect(gn_rect)
-        if try_inserting_graph_node_into_connections(selected_nodes[0], connections_overlapped):
+    if selected_ges.size() == 1 and selected_ges[0] is CustomGraphNode:
+        var gn_rect: = selected_ges[0].get_global_rect().grow(-8).abs()
+        var candidate_conns: = get_connections_intersecting_with_rect(gn_rect)
+        if try_splicing_graph_node_into_connections(selected_ges[0], candidate_conns):
             return
 
     if not editor.undo_manager.is_creating_undo_step():
@@ -1467,43 +1250,52 @@ func _end_node_move_deferred() -> void:
         # Commit the undo step we started when first dragging nodes
         editor.undo_manager.commit_current_undo_step()
 
-func try_inserting_graph_node_into_connections(gn: CustomGraphNode, connections_overlapped: Array[Dictionary]) -> bool:
-    if gn.node_type_schema.get("no_output", false):
+func try_splicing_graph_node_into_connections(insert_gn: CustomGraphNode, candidate_conns: Array[Dictionary]) -> bool:
+    if insert_gn.node_type_schema.get("no_output", false):
         return false
+
+    var insert_out_type: String = SchemaManager.schema.get_output_value_type(insert_gn.an_type)
+    set_conn_infos_types(candidate_conns)
     
-    # Dont try to patch in if you already have an output connection
-    if raw_out_connections(gn).size() > 0:
-        return false
-
-    var gn_output_type: String = gn.node_type_schema.get("output_value_type", "")
-    var first_valid_input_port: int = -1
-
-    var schema_connections: Dictionary = gn.node_type_schema.get("connections", {})
-
-    for conn_idx in schema_connections.size():
-        if schema_connections.values()[conn_idx]["value_type"] == gn_output_type:
-            first_valid_input_port = conn_idx
-            break
-    if first_valid_input_port == -1:
-        return false
+    var in_types: = SchemaManager.schema.get_input_conn_value_types_list(insert_gn.an_type)
+    for in_idx in in_types.size():
+        # assume any unknown input types match the output for maximum possible functionality
+        if in_types[in_idx] == "":
+            in_types[in_idx] = insert_out_type
+    # if the node has no inputs, or a known output type which isn't in it's inputs, skip checking for valid in-connections
+    var no_inputs: bool = in_types.size() == 0 or (insert_out_type != "" and in_types.find(insert_out_type) == -1)
     
-    for conn_info in connections_overlapped:
-        # ignore my own connections
-        if conn_info["to_node"] == gn.name or conn_info["from_node"] == gn.name:
-            continue
-        var conn_value_type: String = get_conn_info_value_type(conn_info)
-        if conn_value_type != gn_output_type:
+    # Try to pick the best option to splice the node into from the candidates
+    var chosen_conn_info: = {}
+    for conn_info in candidate_conns:
+        var out_valid: bool = Util.str_empty_or_match(insert_out_type, conn_info["value_type"])
+        if no_inputs:
+            if out_valid:
+                # Pick the first possible connection, even if not fully validated
+                if not chosen_conn_info:
+                    chosen_conn_info = conn_info
+                # If the types fully validate, ignore previously picked non-fully-validated connection and use this one
+                if insert_out_type == "" or conn_info["value_type"] == insert_out_type:
+                    chosen_conn_info = conn_info
+                    break
             continue
         
-        # Now actually do the connection change
-        multi_connection_change = true
-        remove_connection(conn_info)
-        add_connection({"to_node": gn.name, "to_port": 0}.merged(conn_info))
-        add_connection({"from_node": gn.name, "from_port": first_valid_input_port}.merged(conn_info))
-        multi_connection_change = false
-        create_undo_connection_change_step()
+        var in_idx: = in_types.find(conn_info["value_type"])
+        var in_valid: bool = conn_info["value_type"] == "" or in_idx >= 0
+        if out_valid and in_valid:
+            # Pick the first possible connection, even if not fully validated
+            if not chosen_conn_info:
+                chosen_conn_info = conn_info
+            # If the types fully validate, ignore previously picked non-fully-validated connection and use this one
+            if insert_out_type == "" or (in_idx >= 0 and conn_info["value_type"] == insert_out_type):
+                chosen_conn_info = conn_info
+                break
+    
+    if chosen_conn_info:
+        editor.splice_graph_node_into_connection(self, insert_gn, chosen_conn_info)
         return true
     return false
+
     
 func get_conn_info_value_type(conn_info: Dictionary) -> String:
     var to_gn: = get_node(NodePath(conn_info["to_node"])) as CustomGraphNode
@@ -1563,7 +1355,7 @@ func remove_ge_from_group(ge: GraphElement, group: GraphFrame, with_undo: bool) 
     var group_relation: = {"group": group, "member": ge}
     _break_group_relation(group_relation)
     if with_undo:
-        var undo_step: GraphUndoStep = _undo_manager.start_or_continue_graph_undo_step("Remove Node From Group", self)
+        var undo_step: = editor.undo_manager.start_or_continue_graph_undo_step("Remove Node From Group", self)
         undo_step.removed_group_relations.append(group_relation)
         editor.undo_manager.commit_if_new()
 
@@ -1579,7 +1371,7 @@ func _break_group_relation(group_relation: Dictionary) -> void:
 func add_group_relations(group_relations: Array[Dictionary], with_undo: bool) -> void:
     _assign_group_relations(group_relations)
     if with_undo:
-        var undo_step: GraphUndoStep = _undo_manager.start_or_continue_graph_undo_step("Add Nodes To Groups", self)
+        var undo_step: = editor.undo_manager.start_or_continue_graph_undo_step("Add Nodes To Groups", self)
         undo_step.added_group_relations.append_array(group_relations)
         editor.undo_manager.commit_if_new()
 
@@ -1591,7 +1383,7 @@ func add_ge_to_group(ge: GraphElement, group: GraphFrame, with_undo: bool) -> vo
     var group_relation: = {"group": group, "member": ge}
     _assign_group_relation(group_relation)
     if with_undo:
-        var undo_step: GraphUndoStep = _undo_manager.start_or_continue_graph_undo_step("Add Node To Group", self)
+        var undo_step: = editor.undo_manager.start_or_continue_graph_undo_step("Add Node To Group", self)
         undo_step.removed_group_relations.append(group_relation)
         editor.undo_manager.commit_if_new()
 
@@ -1625,79 +1417,6 @@ func refresh_graph_elements_in_frame_status() -> void:
             var the_group_theme: = the_group.theme if the_group else null
             ge.update_is_in_graph_group(ges_groups.has(ge), the_group_theme)
 
-## Undo/Redo registering for actions which add or remove nodes and connections between nodes
-## This method does not do any adding or removing itself, so that still needs to be done before or after calling
-## before calling, set cur_added_connections, cur_removed_connections, cur_connection_added_ges, and cur_connection_removed_ges
-func create_undo_connection_change_step() -> void:
-    unedited = false
-    var added_ges: Array[GraphElement] = cur_connection_added_ges.duplicate()
-    var removed_ges: Array[GraphElement] = cur_connection_removed_ges.duplicate()
-    var added_conns: Array[Dictionary] = cur_added_connections.duplicate_deep()
-    var removed_conns: Array[Dictionary] = cur_removed_connections.duplicate_deep()
-    cur_connection_added_ges.clear()
-    cur_connection_removed_ges.clear()
-    cur_added_connections.clear()
-    cur_removed_connections.clear()
-    
-    if added_ges.size() > 0 and removed_ges.size() > 0:
-        print_debug("Trying to add and remove graph nodes in the same undo step")
-        return
-    
-    var undo_step_name: = "Connection Change"
-    if added_ges.size() > 0:
-        undo_step_name = "Add Nodes With Connections"
-    elif removed_ges.size() > 0:
-        undo_step_name = "Remove Nodes (With Connections)"
-
-    _undo_manager.create_action(undo_step_name)
-    
-    # careful of the order of operations
-    # we make sure to add relevant nodes before trying to connect them, and remove them after removing their connections
-    # REDOS
-    if added_ges.size() > 0:
-        var the_ans: Dictionary[GraphElement, HyAssetNode] = {}
-        for the_ge in added_ges:
-            if the_ge.get_meta("hy_asset_node_id", ""):
-                var the_an: HyAssetNode = an_lookup.get(the_ge.get_meta("hy_asset_node_id", ""))
-                the_ans[the_ge] = the_an
-        _undo_manager.add_do_method(redo_add_ges.bind(added_ges, the_ans))
-
-    if added_conns.size() > 0:
-        _undo_manager.add_do_method(add_multiple_connections.bind(added_conns, false))
-    if removed_conns.size() > 0:
-        _undo_manager.add_do_method(remove_multiple_connections.bind(removed_conns, false))
-
-    if removed_ges.size() > 0:
-        _undo_manager.add_do_method(redo_remove_ges.bind(removed_ges))
-        
-        cur_removed_group_relations = get_graph_elements_cur_group_relations(removed_ges)
-    
-    # UNDOS
-    if removed_ges.size() > 0:
-        var the_ans: Dictionary[GraphElement, HyAssetNode] = {}
-        for the_ge in removed_ges:
-            var an_id: String = the_ge.get_meta("hy_asset_node_id", "")
-            if an_id:
-                var the_an: HyAssetNode = an_lookup.get(an_id)
-                the_ans[the_ge] = the_an
-        _undo_manager.add_undo_method(undo_remove_ges.bind(removed_ges, the_ans))
-
-    if added_conns.size() > 0:
-        _undo_manager.add_undo_method(remove_multiple_connections.bind(added_conns, false))
-    if removed_conns.size() > 0:
-        _undo_manager.add_undo_method(add_multiple_connections.bind(removed_conns, false))
-
-    if added_ges.size() > 0:
-        _undo_manager.add_undo_method(undo_add_ges.bind(added_ges))
-    
-    # Add group membership changes from adding or removing nodes
-    if removed_ges.size() > 0:
-        add_group_membership_to_cur_undo_action(true, false)
-    elif added_ges.size() > 0:
-        add_group_membership_to_cur_undo_action(false, true)
-    
-    _undo_manager.commit_action(false)
-
 func delete_graph_elements_with_undo(ges_to_remove: Array[GraphElement], action_name: String = "Delete Nodes") -> void:
     var undo_step: UndoStep = editor.undo_manager.start_or_continue_undo_step(action_name)
     undo_step.delete_graph_elements(ges_to_remove, self)
@@ -1714,63 +1433,6 @@ func remove_ge_without_undo(ge: GraphElement) -> void:
             remove_asset_node(asset_node)
     remove_graph_element_child(ge)
 
-
-
-func create_add_new_ge_undo_step(the_new_ge: GraphElement) -> void:
-    create_add_new_ges_undo_step([the_new_ge])
-
-func create_add_new_ges_undo_step(new_ges: Array[GraphElement]) -> void:
-    unedited = false
-    _undo_manager.create_action("Add New Graph Nodes")
-    var added_asset_nodes: Dictionary[GraphElement, HyAssetNode] = {}
-    for the_ge in new_ges:
-        var an_id: String = the_ge.get_meta("hy_asset_node_id", "")
-        if an_id:
-            added_asset_nodes[the_ge] = an_lookup[an_id]
-
-    _undo_manager.add_do_method(redo_add_ges.bind(new_ges, added_asset_nodes))
-    
-    _undo_manager.add_undo_method(undo_add_ges.bind(new_ges))
-
-    _undo_manager.commit_action(false)
-
-## Add appropriate bindings for undoing/redoing group membership changes to an existing undo, call after all other steps are added
-## If removing nodes entirely, set for_removal to true, for adding nodes, set for_adding to true
-func add_group_membership_to_cur_undo_action(for_removal: bool = false, for_adding: bool = false) -> void:
-    var removed_group_relations: Array[Dictionary] = cur_removed_group_relations.duplicate_deep()
-    var added_group_relations: Array[Dictionary] = cur_added_group_relations.duplicate_deep()
-    
-    cur_removed_group_relations.clear()
-    cur_added_group_relations.clear()
-    
-    # if graph relations are removed because a node is removed, it doesn't need to be explicitly redone,
-    # since re-doing node removal will already remove the node from the group.
-    # it actually makes the order of operations tougher, it will error if trying to remove an already removed node from a group, so I'm just skipping it
-    if removed_group_relations.size() > 0 and not for_removal:
-        _undo_manager.add_do_method(_break_group_relations.bind(removed_group_relations))
-    if added_group_relations.size() > 0:
-        _undo_manager.add_do_method(_assign_group_relations.bind(added_group_relations))
-    _undo_manager.add_do_method(refresh_graph_elements_in_frame_status)
-
-    if added_group_relations.size() > 0:
-        _undo_manager.add_undo_method(_break_group_relations.bind(added_group_relations))
-    if removed_group_relations.size() > 0 and not for_adding:
-        _undo_manager.add_undo_method(_assign_group_relations.bind(removed_group_relations))
-    _undo_manager.add_undo_method(refresh_graph_elements_in_frame_status)
-
-func add_group_membership_pre_move_undo_actions(removed_relations: Array[Dictionary], added_relations: Array[Dictionary]) -> void:
-    if removed_relations.size() > 0:
-        _undo_manager.add_do_method(_break_group_relations.bind(removed_relations))
-    if added_relations.size() > 0:
-        _undo_manager.add_undo_method(_break_group_relations.bind(added_relations))
-
-func add_group_membership_post_move_undo_actions(added_relations: Array[Dictionary], removed_relations: Array[Dictionary]) -> void:
-    if added_relations.size() > 0:
-        _undo_manager.add_do_method(_assign_group_relations.bind(added_relations))
-        _undo_manager.add_do_method(refresh_graph_elements_in_frame_status)
-    if removed_relations.size() > 0:
-        _undo_manager.add_undo_method(_assign_group_relations.bind(removed_relations))
-        _undo_manager.add_undo_method(refresh_graph_elements_in_frame_status)
 
 func undo_remove_ges(the_ges: Array[GraphElement], the_ans: Dictionary[GraphElement, HyAssetNode]) -> void:
     for the_ge in the_ges:
@@ -1795,7 +1457,7 @@ func _redo_add_graph_element(the_graph_element: GraphElement, the_asset_node: Hy
         _undo_redo_add_ge(the_graph_element)
 
 func _undo_redo_add_gn_and_an(the_graph_node: GraphNode, the_asset_node: HyAssetNode) -> void:
-    _register_asset_node(the_asset_node)
+    editor.register_asset_node(the_asset_node)
     editor.gn_lookup[the_asset_node.an_node_id] = the_graph_node
     add_graph_node_child(the_graph_node)
 
@@ -1882,58 +1544,36 @@ func can_dissolve_gn(graph_node: CustomGraphNode) -> bool:
     return output_value_type in connected_connections_types
 
 func dissolve_gn_with_undo(graph_node: CustomGraphNode) -> void:
-    var dissolve_info: = get_dissolve_info(graph_node)
-    if not graph_node.get_meta("hy_asset_node_id", "") or not dissolve_info["has_output_connection"]:
-        print_debug("Dissolve: node %s is not an asset node or has no output connection" % graph_node.name)
-        _delete_request([graph_node.name])
-        return
+    var undo_step: = editor.undo_manager.start_or_continue_undo_step("Dissolve Nodes")
+    var is_new_step: = editor.undo_manager.is_new_step
     
-    var cur_schema: = graph_node.node_type_schema
-    var val_type: String = cur_schema.get("output_value_type", "")
-    var output_to_gn: = get_node(NodePath(dissolve_info["output_to_gn_name"])) as CustomGraphNode
-    if not output_to_gn:
-        push_error("Dissolve: output to node %s not found or is not CustomGraphNode" % dissolve_info["output_to_gn_name"])
-        _delete_request([graph_node.name])
-        return
+    # Also queues removing existing connections
+    undo_step.delete_graph_elements([graph_node], self)
     
-    assert(output_to_gn.node_type_schema, "Dissolve: output to node %s has no schema set" % output_to_gn.name)
+    var all_conn_infos: Array[Dictionary] = raw_connections(graph_node)
+    set_conn_infos_types(all_conn_infos)
     
-    var out_to_connection_schema: Dictionary = output_to_gn.node_type_schema.get("connections", {})
-    var out_conn_idx: int = dissolve_info["output_to_port_idx"]
-    var is_multi: bool = out_to_connection_schema.values()[out_conn_idx].get("multi", false)
-    
-    var cur_asset_node: HyAssetNode = an_lookup.get(graph_node.get_meta("hy_asset_node_id", ""), null)
-    assert(cur_asset_node, "Dissolve: current asset node not found")
-    # Sort asset node connections so the first one found if the out target isn't a multi connect is deterministic
-    cur_asset_node.sort_connections_by_gn_pos(editor.gn_lookup)
-    
-    multi_connection_change = true
-    for in_port_idx in dissolve_info["in_ports_connected"]:
-        var conn_schema: Dictionary = cur_schema.get("connections", {}).values()[in_port_idx]
-        var in_val_type: String = conn_schema["value_type"]
-        if val_type and in_val_type != val_type:
-            continue
-        
-        var conn_name: = cur_asset_node.connection_list[in_port_idx]
-        var connected_graph_nodes: Array[GraphNode] = get_graph_connected_graph_nodes(graph_node, conn_name)
-        var connected_one: bool = false
-        for in_gn in connected_graph_nodes:
-            connected_one = true
-            _remove_connection(graph_node.name, in_port_idx, in_gn.name, 0)
-            _add_connection(output_to_gn.name, out_conn_idx, in_gn.name, 0)
-            if not is_multi:
-                break
-        if not is_multi and connected_one:
-            break
-    
-    var leftover_connections: = raw_connections(graph_node)
-    remove_multiple_connections(leftover_connections)
-    
-    multi_connection_change = false
+    var out_conn_infos: Array[Dictionary] = Util.out_connections(all_conn_infos, graph_node.name)
+    if out_conn_infos.size() > 0:
+        var in_conn_infos: Array[Dictionary] = Util.in_connections(all_conn_infos, graph_node.name)
+        var recovered_connections: = get_recovered_connections_for_dissolve(out_conn_infos[0], in_conn_infos)
+        editor.connect_graph_nodes(recovered_connections, self)
 
-    cur_connection_removed_ges.append(graph_node)
-    create_undo_connection_change_step()
-    remove_ge_without_undo(graph_node)
+    if is_new_step:
+        editor.undo_manager.commit()
+
+func get_recovered_connections_for_dissolve(old_out_conn_info: Dictionary, old_in_conn_infos: Array[Dictionary]) -> Array[Dictionary]:
+    var template_conn_info: = old_out_conn_info.duplicate()
+    template_conn_info.erase("to_node")
+    template_conn_info.erase("to_port")
+
+    var recovered_connections: Array[Dictionary] = []
+    for old_in_conn in old_in_conn_infos:
+        if not Util.str_empty_or_match(old_in_conn["value_type"], template_conn_info["value_type"]):
+            continue
+        recovered_connections.append(template_conn_info.merged(old_in_conn))
+    return recovered_connections
+
 
 func cut_all_connections_with_undo(graph_node: CustomGraphNode) -> void:
     var all_connections: Array[Dictionary] = raw_connections(graph_node)
@@ -2281,7 +1921,7 @@ func get_title_edit_popup(current_title: String) -> PopupPanel:
 
 func open_gn_title_edit(graph_node: CustomGraphNode) -> PopupPanel:
     var title_edit_popup = get_title_edit_popup(graph_node.title)
-    title_edit_popup.new_title_submitted.connect(change_gn_title.bind(graph_node))
+    title_edit_popup.new_title_submitted.connect(change_ge_title_to.bind(graph_node))
     add_child(title_edit_popup, true)
     title_edit_popup.position = Util.get_popup_window_pos(graph_node.get_global_position())
     title_edit_popup.position -= Vector2i.ONE * 10
@@ -2290,7 +1930,7 @@ func open_gn_title_edit(graph_node: CustomGraphNode) -> PopupPanel:
 
 func open_group_title_edit(group: GraphFrame) -> PopupPanel:
     var title_edit_popup = get_title_edit_popup(group.title)
-    title_edit_popup.new_title_submitted.connect(change_group_title.bind(group))
+    title_edit_popup.new_title_submitted.connect(change_ge_title_to.bind(group))
     add_child(title_edit_popup, true)
     var group_title_rect: = group.get_titlebar_hbox().get_global_rect()
     var group_title_center: = Vector2(group_title_rect.get_center().x, group_title_rect.position.y)
@@ -2307,54 +1947,22 @@ func show_exclusive_clamped_popup(the_popup: PopupPanel) -> void:
 func clamp_window_pos_for_popup(window_pos: Vector2i, popup_size: Vector2) -> Vector2i:
     return Util.clamp_popup_pos_inside_window(window_pos, popup_size, get_window())
 
-func change_gn_title(new_title: String, graph_node: CustomGraphNode) -> void:
-    unedited = false
-    var old_title: String = graph_node.title
-    _set_gn_title(graph_node, new_title)
-    create_change_title_undo_step(graph_node, old_title)
-
-func _set_gn_title(graph_node: CustomGraphNode, new_title: String) -> void:
-    graph_node.title = new_title
-    if graph_node.get_meta("hy_asset_node_id", ""):
-        var an: HyAssetNode = an_lookup.get(graph_node.get_meta("hy_asset_node_id", ""), null)
-        if an:
-            an.title = new_title
-
-func change_group_title(new_title: String, group: GraphFrame) -> void:
-    unedited = false
-    var old_title: String = group.title
-    _set_group_title(group, new_title)
-    create_change_title_undo_step(group, old_title)
+func _set_ge_titles(ge_titles: Dictionary[GraphElement, String]) -> void:
+    for ge in ge_titles.keys():
+        if ge is GraphFrame:
+            _set_group_title(ge, ge_titles[ge])
+        ge.set("title", ge_titles[ge])
 
 func _set_group_title(group: GraphFrame, new_title: String) -> void:
     group.title = new_title
     group.tooltip_text = new_title
 
-func create_change_title_undo_step(graph_element: GraphElement, old_title: String) -> void:
-    if not (graph_element is CustomGraphNode or graph_element is GraphFrame):
-        return
-    unedited = false
-    var new_title: String = graph_element.title
-    _undo_manager.create_action("Change Node Title")
-    
-    if graph_element is CustomGraphNode:
-        _undo_manager.add_do_method(_set_gn_title.bind(graph_element, new_title))
-        _undo_manager.add_undo_method(_set_gn_title.bind(graph_element, old_title))
-    else:
-        _undo_manager.add_do_method(_set_group_title.bind(graph_element, new_title))
-        _undo_manager.add_undo_method(_set_group_title.bind(graph_element, old_title))
-
-    _undo_manager.commit_action(false)
-
-
-
-func get_duplicate_gn_name(old_gn_name: String) -> String:
-    var base_name: = old_gn_name.split("--")[0]
-    return new_graph_node_name(base_name)
-
-func new_graph_node_name(base_name: String) -> String:
-    global_gn_counter += 1
-    return "%s--%d" % [base_name, global_gn_counter]
+func change_ge_title_to(graph_element: GraphElement, new_title: String) -> void:
+    var action_name: String = "Change Group Title" if graph_element is GraphFrame else "Change Node Title"
+    var graph_undo_step: = editor.undo_manager.start_or_continue_graph_undo_step(action_name, self)
+    graph_undo_step.ge_titles_changed_from[graph_element] = graph_element.get("title")
+    graph_undo_step.ge_titles_changed_to[graph_element] = new_title
+    editor.undo_manager.commit_if_new()
 
 func raw_connections(graph_node: CustomGraphNode) -> Array[Dictionary]:
     assert(is_same(graph_node.get_parent(), self), "raw_connections: Graph node %s is not a direct child of the graph edit" % graph_node.name)
@@ -2365,11 +1973,21 @@ func raw_connections(graph_node: CustomGraphNode) -> Array[Dictionary]:
 
     return get_connection_list_from_node(graph_node.name)
 
+func raw_in_port_connections(graph_node: CustomGraphNode, at_port: int) -> Array[Dictionary]:
+    return Util.in_connections(raw_connections(graph_node), graph_node.name, at_port)
+
 func raw_out_connections(graph_node: CustomGraphNode) -> Array[Dictionary]:
     return Util.out_connections(raw_connections(graph_node), graph_node.name)
 
 func raw_in_connections(graph_node: CustomGraphNode) -> Array[Dictionary]:
     return Util.in_connections(raw_connections(graph_node), graph_node.name)
+
+func set_conn_info_type(conn_info: Dictionary) -> void:
+    conn_info["value_type"] = get_type_of_conn_info(conn_info)
+
+func set_conn_infos_types(conn_infos: Array[Dictionary]) -> void:
+    for conn_info in conn_infos:
+        conn_info["value_type"] = get_type_of_conn_info(conn_info)
 
 func typed_conn_infos_for_gn(graph_node: CustomGraphNode) -> Array[Dictionary]:
     var conn_infos: = raw_connections(graph_node)
@@ -2430,31 +2048,27 @@ func deserialize_and_add_group(group_data: Dictionary, use_json_pos_scale: bool,
     add_existing_group(new_group)
     return new_group
 
-func set_group_color_with_undo(group: GraphFrame, group_color_name: String) -> void:
-    if not group.get_meta("has_custom_color", false):
-        add_group_color_with_undo(group, group_color_name)
-        return
-
-    var old_color_name: String = group.get_meta("custom_color_name", "")
-    _undo_manager.create_action("Change Group Accent Color")
-    
-    _undo_manager.add_do_method(set_group_custom_accent_color.bind(group, group_color_name))
-    _undo_manager.add_undo_method(set_group_custom_accent_color.bind(group, old_color_name))
-
-    _undo_manager.commit_action(true)
-    refresh_graph_elements_in_frame_status()
-
-func add_group_color_with_undo(group: GraphFrame, group_color_name: String) -> void:
-    _undo_manager.create_action("Add Group Accent Color")
-    _undo_manager.add_do_method(set_group_custom_accent_color.bind(group, group_color_name))
-    _undo_manager.add_undo_method(remove_group_accent_color.bind(group))
-    _undo_manager.commit_action(true)
-    refresh_graph_elements_in_frame_status()
-
 func get_default_group_color_name() -> String:
     if ThemeColorVariants.has_theme_color(ANESettings.default_group_color):
         return ANESettings.default_group_color
     return TypeColors.fallback_color
+
+func set_group_color_with_undo(group: GraphFrame, new_color_name: String) -> void:
+    var graph_undo_step: = editor.undo_manager.start_or_continue_graph_undo_step("Change Group Accent Color", self)
+    var from_color_name: String = group.get_meta("custom_color_name", "")
+    if not group.get_meta("has_custom_color", false):
+        from_color_name = ""
+    graph_undo_step.group_accent_colors_changed_from[group] = from_color_name
+    graph_undo_step.group_accent_colors_changed_to[group] = new_color_name
+    editor.undo_manager.commit_if_new()
+
+func _set_groups_accent_colors(groups_colors: Dictionary[GraphFrame, String]) -> void:
+    for group in groups_colors.keys():
+        var accent_color_name: String = groups_colors[group]
+        if accent_color_name == "":
+            remove_group_accent_color(group)
+        else:
+            set_group_custom_accent_color(group, accent_color_name)
 
 func set_group_custom_accent_color(the_group: GraphFrame, group_color_name: String, as_custom: bool = true) -> void:
     if not as_custom:
@@ -2474,7 +2088,7 @@ func remove_group_accent_color(group: GraphFrame) -> void:
 
 func _make_new_group(group_title: String = "Group", group_size: Vector2 = Vector2(100, 100)) -> GraphFrame:
     var new_group: = GraphFrame.new()
-    new_group.name = new_graph_node_name("Group")
+    new_group.name = editor.graph_node_factory.new_graph_node_name("Group")
     new_group.resizable = true
     new_group.autoshrink_enabled = ANESettings.default_is_group_shrinkwrap
     new_group.size = group_size
@@ -2618,3 +2232,16 @@ func local_pos_to_pos_offset(the_pos: Vector2) -> Vector2:
 
 func position_offset_to_global_pos(the_position_offset: Vector2) -> Vector2:
     return (the_position_offset * zoom) - scroll_offset
+
+func get_all_connections_for_graph_elements(ges: Array[GraphElement]) -> Array[Dictionary]:
+    var ge_connections: Array[Dictionary] = []
+    var added_gn_names: Array[String] = []
+    for ge in ges:
+        if not ge is CustomGraphNode:
+            continue
+        for conn_info in raw_connections(ge):
+            if conn_info["from_node"] in added_gn_names or conn_info["to_node"] in added_gn_names:
+                continue
+            ge_connections.append(conn_info)
+        added_gn_names.append(ge.name)
+    return ge_connections

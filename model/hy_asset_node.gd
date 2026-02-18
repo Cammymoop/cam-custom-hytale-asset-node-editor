@@ -5,7 +5,20 @@ extends Resource
 class AuxData:
     var position: Vector2 = Vector2.ZERO
     var title: String = ""
-
+    var output_to_node_id: String = ""
+    
+    func duplicate(include_parent: bool = false) -> AuxData:
+        var new_aux_data: = AuxData.new()
+        new_aux_data.position = position
+        new_aux_data.title = title
+        if include_parent:
+            new_aux_data.output_to_node_id = output_to_node_id
+        return new_aux_data
+    
+    func duplicate_with_parent(parent_id: String) -> AuxData:
+        var new_aux_data: = duplicate()
+        new_aux_data.output_to_node_id = parent_id
+        return new_aux_data
 
 signal settings_changed()
 
@@ -119,6 +132,15 @@ func remove_node_from_connection(conn_name: String, asset_node: HyAssetNode) -> 
 
     remove_node_from_connection_at(conn_name, found_at_idx)
 
+func clear_connection(conn_name: String) -> void:
+    if shallow:
+        print_debug("Trying to clear connection of a shallow asset node (%s)" % an_node_id)
+        return
+    if not connection_list.has(conn_name):
+        print_debug("Connection name %s not found in connection list" % conn_name)
+        return
+    remove_all_indices_from_connection(conn_name)
+
 func pop_node_from_connection(conn_name: String) -> HyAssetNode:
     if shallow:
         print_debug("Trying to pop node from a shallow asset node (%s)" % an_node_id)
@@ -161,6 +183,11 @@ func remove_indices_from_connection(conn_name: String, indices: Array[int]) -> v
         connected_asset_nodes.erase("%s:%d" % [conn_name, idx])
     _reindex_connection(conn_name)
 
+func remove_all_indices_from_connection(conn_name: String) -> void:
+    for i in connected_node_counts[conn_name]:
+        connected_asset_nodes.erase("%s:%d" % [conn_name, i])
+    connected_node_counts[conn_name] = 0
+
 func _reindex_connection(conn_name: String, max_index: int = -1, insert_nodes: Dictionary[int, HyAssetNode] = {}) -> void:
     if max_index < 0:
         max_index = connected_node_counts[conn_name]
@@ -199,19 +226,24 @@ func get_shallow_copy(new_id: String) -> HyAssetNode:
     return new_asset_node
     
 
-func get_connected_node(conn_name: String, index: int) -> HyAssetNode:
+func get_connected_node(conn_name: String, index: int = 0) -> HyAssetNode:
     if shallow:
         print_debug("Trying to retrieve inner nodes of a shallow asset node (%s)" % an_node_id)
         return null
     if not connection_list.has(conn_name):
         print_debug("Connection name %s not found in connection list" % conn_name)
         return null
-    return connected_asset_nodes["%s:%d" % [conn_name, index]]
+    return connected_asset_nodes.get("%s:%d" % [conn_name, index], null)
 
-func get_all_connected_nodes(conn_name: String) -> Array[HyAssetNode]:
+func get_all_connected_nodes(conn_name: String = "") -> Array[HyAssetNode]:
     if shallow:
         print_debug("Trying to retrieve inner nodes of a shallow asset node (%s)" % an_node_id)
         return []
+    if conn_name == "":
+        var all_connected: Array[HyAssetNode] = []
+        for conn in connection_list:
+            all_connected.append_array(_get_connected_node_list(conn))
+        return all_connected
     if not connection_list.has(conn_name):
         print_debug("Connection name %s not found in connection list %s" % [conn_name, connection_list])
         return []

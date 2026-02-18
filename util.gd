@@ -89,16 +89,21 @@ func get_icon_for_color(icon_color: Color) -> Texture2D:
     img.fill(icon_color)
     return ImageTexture.create_from_image(img)
 
-func out_connections(conn_infos: Array[Dictionary], graph_node_name: String) -> Array[Dictionary]:
+func out_connections(conn_infos: Array[Dictionary], graph_node_name: String, only_at_port: int = -1) -> Array[Dictionary]:
     var out_conn_infos: Array[Dictionary] = []
     for conn_info in conn_infos:
         if conn_info.get("to_node", "") == graph_node_name:
-            out_conn_infos.append(conn_info)
+            if only_at_port == -1 or conn_info.get("to_port", -1) == only_at_port:
+                out_conn_infos.append(conn_info)
     return out_conn_infos
 
-func in_connections(conn_infos: Array[Dictionary], graph_node_name: String) -> Array[Dictionary]:
+func in_connections(conn_infos: Array[Dictionary], graph_node_name: String, only_at_port: int = -1) -> Array[Dictionary]:
     var in_conn_infos: Array[Dictionary] = []
     for conn_info in conn_infos:
         if conn_info.get("from_node", "") == graph_node_name:
-            in_conn_infos.append(conn_info)
+            if only_at_port == -1 or conn_info.get("from_port", -1) == only_at_port:
+                in_conn_infos.append(conn_info)
     return in_conn_infos
+
+func str_empty_or_match(str_a: String, str_b: String) -> bool:
+    return str_a == "" or str_b == "" or str_a == str_b

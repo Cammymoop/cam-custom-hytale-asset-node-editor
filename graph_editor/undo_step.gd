@@ -9,7 +9,12 @@ var editor: CHANE_AssetNodeEditor
 var graph_undo_steps: Dictionary[CHANE_AssetNodeGraphEdit, GraphUndoStep] = {}
 
 var created_asset_nodes: Array[HyAssetNode] = []
+var created_asset_nodes_aux_data: Array[HyAssetNode.AuxData] = []
 var deleted_asset_nodes: Array[HyAssetNode] = []
+var deleted_asset_nodes_aux_data: Array[HyAssetNode.AuxData] = []
+
+var added_asset_node_connections: Array[Dictionary] = []
+var removed_asset_node_connections: Array[Dictionary] = []
 
 var an_settings_changed: Dictionary[String, Dictionary] = {}
 
@@ -60,7 +65,44 @@ func get_settings_changed_for_an(an: HyAssetNode) -> Dictionary[String, Dictiona
 func delete_graph_elements(ges_to_delete: Array[GraphElement], in_graph: CHANE_AssetNodeGraphEdit) -> void:
     deleted_asset_nodes.append_array(editor.get_all_owned_asset_nodes(ges_to_delete))
     var graph_undo_step: = get_undo_for_graph(in_graph)
-    graph_undo_step._delete_graph_elements(ges_to_delete, in_graph)
+    graph_undo_step._delete_graph_elements(in_graph, ges_to_delete)
+
+## Adds deleting asset nodes to the undo step, assumes associated graph elements being deleted are already added to the undo step
+func _delete_asset_nodes(asset_nodes: Array[HyAssetNode]) -> void:
+    # remove all in connections first, skipping all connections already accounted for because the an was previously added for deletion
+    for asset_node in asset_nodes:
+        _remove_all_asset_node_in_connections(asset_node)
+    _add_deleted_ans(asset_nodes)
+    # now remove parent connections if the parent is not in the set or already being deleted
+    for asset_node in asset_nodes:
+        var parent_an: = editor.get_parent_an(asset_node)
+        if parent_an and parent_an not in deleted_asset_nodes:
+            removed_asset_node_connections.append({
+                "from_an": parent_an.an_node_id,
+                "from_conn_name": asset_node.connection_list[0],
+                "to_an": asset_node,
+            })
+
+func _add_deleted_ans(asset_nodes: Array[HyAssetNode]) -> void:
+    for asset_node in asset_nodes:
+        deleted_asset_nodes.append(asset_node)
+        deleted_asset_nodes_aux_data.append(editor.asset_node_aux_data[asset_node.an_node_id])
+
+func _remove_all_asset_node_in_connections(asset_node: HyAssetNode) -> void:
+    for connection_name in asset_node.connection_list:
+        var connected_ans: Array[HyAssetNode] = asset_node.get_all_connected_nodes(connection_name)
+        for connected_an in connected_ans:
+            if connected_an not in deleted_asset_nodes:
+                removed_asset_node_connections.append({
+                    "from_an": asset_node.an_node_id,
+                    "from_conn_name": connection_name,
+                    "to_an": connected_an.an_node_id,
+                })
+
+func _add_created_ans(asset_nodes: Array[HyAssetNode]) -> void:
+    for asset_node in asset_nodes:
+        created_asset_nodes.append(asset_node)
+        created_asset_nodes_aux_data.append(editor.asset_node_aux_data[asset_node.an_node_id])
 
 func commit(undo_redo: UndoRedo) -> void:
     var merge_mode: = UndoRedo.MERGE_ENDS if has_existing_action else UndoRedo.MERGE_DISABLE
@@ -92,5 +134,16 @@ func _make_action(undo_redo: UndoRedo, merge_mode: UndoRedo.MergeMode) -> void:
     
     undo_redo.commit_action(true)
     
-    
+func add_asset_node_connection(from_an: HyAssetNode, from_conn_name: String, to_an: HyAssetNode) -> void:
+    added_asset_node_connections.append({
+        "from_an": from_an,
+        "from_conn_name": from_conn_name,
+        "to_an": to_an,
+    })
 
+func remove_asset_node_connection(from_an: HyAssetNode, from_conn_name: String, to_an: HyAssetNode) -> void:
+    removed_asset_node_connections.append({
+        "from_an": from_an,
+        "from_conn_name": from_conn_name,
+        "to_an": to_an,
+    })

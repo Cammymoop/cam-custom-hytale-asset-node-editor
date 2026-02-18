@@ -112,6 +112,9 @@ var serialized_pos_offset: Vector2 = Vector2.ZERO
 static func get_unique_an_id(prefix: String) -> String:
     return "%s-%s" % [prefix, Util.unique_id_string()]
 
+static func reroll_an_id(an_id: String) -> String:
+    return get_unique_an_id(an_id.split("-")[0])
+
 func get_new_id_for_type(asset_node_type: String) -> String:
     return get_unique_an_id(SchemaManager.schema.get_id_prefix_for_node_type(asset_node_type))
 
@@ -609,14 +612,6 @@ func serialize_an_metadata(asset_node: HyAssetNode, graph_pos: Vector2) -> Dicti
     if asset_node.title and asset_node.title != asset_node.default_title:
         an_meta[MetadataKeys.NodeMetaTitle] = asset_node.title
     return an_meta
-
-func serialize_graph_nodes_metadata(graph_nodes: Array[GraphNode]) -> Dictionary:
-    var nodes_metadata: Dictionary = {}
-    for graph_node in graph_nodes:
-        var owned_ans: Array[HyAssetNode] = graph_node.get_own_asset_nodes()
-        for owned_an in owned_ans:
-            graph_node.add_an_metadata_into(owned_an, self, nodes_metadata)
-    return nodes_metadata
 
 ## Creates plain dictionary data in the hytale asset json format, mimicking the format used by the official asset node editor
 func serialize_entire_graph_as_asset(editor: CHANE_AssetNodeEditor) -> Dictionary:
