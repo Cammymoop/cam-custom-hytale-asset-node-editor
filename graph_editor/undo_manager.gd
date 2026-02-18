@@ -3,10 +3,15 @@ extends Node
 const UndoStep = preload("res://graph_editor/undo_step.gd")
 const GraphUndoStep = preload("res://graph_editor/graph_undo_step.gd")
 
+var editor: CHANE_AssetNodeEditor = null
+
 var undo_redo: UndoRedo = UndoRedo.new()
 
 var active_undo_step: UndoStep = null
 var is_new_step: bool = false
+
+func set_editor(the_editor: CHANE_AssetNodeEditor) -> void:
+    editor = the_editor
 
 func clear() -> void:
     undo_redo.clear_history(true)
@@ -27,6 +32,7 @@ func start_undo_step(action_name: String) -> UndoStep:
 
     var new_undo_step: UndoStep = UndoStep.new()
     new_undo_step.action_name = action_name
+    new_undo_step.set_editor(editor)
     active_undo_step = new_undo_step
     is_new_step = true
     return new_undo_step

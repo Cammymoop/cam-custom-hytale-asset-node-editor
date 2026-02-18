@@ -14,8 +14,15 @@ var moved_graph_elements_from: Dictionary[GraphElement, Vector2] = {}
 var resized_graph_elements_from: Dictionary[GraphElement, Vector2] = {}
 
 var group_shrinkwrap_changed_from: Dictionary[GraphFrame, bool] = {}
+var group_shrinkwrap_changed_to: Dictionary[GraphFrame, bool] = {}
 
 var selected_before: Array[GraphElement] = []
+
+## Used by UndoStep, not to be called directly
+func _delete_graph_elements(ges_to_delete: Array[GraphElement], graph: CHANE_AssetNodeGraphEdit) -> void:
+    removed_graph_elements.append_array(ges_to_delete)
+    removed_connections.append_array(graph.get_all_connections_for_graph_elements(ges_to_delete))
+    removed_group_relations.append_array(graph.get_graph_elements_cur_group_relations(ges_to_delete))
 
 func register_action(undo_redo: UndoRedo, graph: CHANE_AssetNodeGraphEdit, _editor: CHANE_AssetNodeEditor) -> void:
     var moved_graph_elements_to: Dictionary[GraphElement, Vector2] = {}
@@ -24,7 +31,6 @@ func register_action(undo_redo: UndoRedo, graph: CHANE_AssetNodeGraphEdit, _edit
     var resized_graph_elements_to: Dictionary[GraphElement, Vector2] = {}
     for resized_graph_element in resized_graph_elements_from.keys():
         resized_graph_elements_to[resized_graph_element] = resized_graph_element.size
-    var group_shrinkwrap_changed_to: Dictionary[GraphFrame, bool] = {}
     
     if removed_graph_elements.size() > 0:
         undo_redo.add_undo_method(graph.undo_redo_add_ges.bind(removed_graph_elements))
@@ -43,8 +49,8 @@ func register_action(undo_redo: UndoRedo, graph: CHANE_AssetNodeGraphEdit, _edit
         undo_redo.add_do_method(graph.undo_redo_add_connections.bind(added_connections))
     
     if group_shrinkwrap_changed_from.size() > 0:
-        undo_redo.add_undo_method(graph.undo_redo_set_groups_shrinkwrap.bind(group_shrinkwrap_changed_from))
-        undo_redo.add_do_method(graph.undo_redo_set_groups_shrinkwrap.bind(group_shrinkwrap_changed_to))
+        undo_redo.add_undo_method(graph._set_groups_shrinkwrap.bind(group_shrinkwrap_changed_from))
+        undo_redo.add_do_method(graph._set_groups_shrinkwrap.bind(group_shrinkwrap_changed_to))
     
     if added_graph_elements.size() > 0:
         undo_redo.add_undo_method(graph.undo_redo_remove_ges.bind(added_graph_elements))

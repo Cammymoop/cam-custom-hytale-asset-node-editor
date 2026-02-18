@@ -316,23 +316,23 @@ func undo_redo_change_points(points_to_restore: Array[Vector2]) -> void:
     replace_points(points_to_restore, false)
 
 func create_points_change_undo_step(old_points: Array[Vector2]) -> void:
-    graph_edit.undo_manager.create_action("Change Manual Curve Points")
+    graph_edit._undo_manager.create_action("Change Manual Curve Points")
 
-    graph_edit.undo_manager.add_do_method(undo_redo_change_points.bind(my_points.duplicate()))
+    graph_edit._undo_manager.add_do_method(undo_redo_change_points.bind(my_points.duplicate()))
 
-    graph_edit.undo_manager.add_undo_method(undo_redo_change_points.bind(old_points.duplicate()))
+    graph_edit._undo_manager.add_undo_method(undo_redo_change_points.bind(old_points.duplicate()))
 
-    graph_edit.undo_manager.commit_action(false)
+    graph_edit._undo_manager.commit_action(false)
 
 func create_points_adj_undo_step(old_points: Array[Vector2]) -> void:
     var merge_mode: = UndoRedo.MERGE_DISABLE if next_adjust_is_new else UndoRedo.MERGE_ENDS
-    graph_edit.undo_manager.create_action("Move Manual Curve Points", merge_mode)
+    graph_edit._undo_manager.create_action("Move Manual Curve Points", merge_mode)
 
-    graph_edit.undo_manager.add_do_method(undo_redo_change_points.bind(my_points.duplicate()))
+    graph_edit._undo_manager.add_do_method(undo_redo_change_points.bind(my_points.duplicate()))
 
-    graph_edit.undo_manager.add_undo_method(undo_redo_change_points.bind(old_points.duplicate()))
+    graph_edit._undo_manager.add_undo_method(undo_redo_change_points.bind(old_points.duplicate()))
 
-    graph_edit.undo_manager.commit_action(false)
+    graph_edit._undo_manager.commit_action(false)
 
 
 func update_extra_settings_menu() -> void:

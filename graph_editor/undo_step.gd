@@ -29,6 +29,7 @@ func add_graph_undo(graph: CHANE_AssetNodeGraphEdit, undo_step: GraphUndoStep) -
 func get_undo_for_graph(graph: CHANE_AssetNodeGraphEdit) -> GraphUndoStep:
     if not graph_undo_steps.has(graph):
         graph_undo_steps[graph] = GraphUndoStep.new()
+        graph_undo_steps[graph].selected_before = graph.get_selected_ges()
     return graph_undo_steps[graph]
 
 func register_an_settings_before_change(an_id: String, settings: Dictionary) -> void:
@@ -55,6 +56,11 @@ func trim_unchanged_settings() -> void:
 
 func get_settings_changed_for_an(an: HyAssetNode) -> Dictionary[String, Dictionary]:
     return an_settings_changed.get(an.an_node_id, Dictionary({}, TYPE_STRING, &"", null, TYPE_DICTIONARY, &"", null))
+
+func delete_graph_elements(ges_to_delete: Array[GraphElement], in_graph: CHANE_AssetNodeGraphEdit) -> void:
+    deleted_asset_nodes.append_array(editor.get_all_owned_asset_nodes(ges_to_delete))
+    var graph_undo_step: = get_undo_for_graph(in_graph)
+    graph_undo_step._delete_graph_elements(ges_to_delete, in_graph)
 
 func commit(undo_redo: UndoRedo) -> void:
     var merge_mode: = UndoRedo.MERGE_ENDS if has_existing_action else UndoRedo.MERGE_DISABLE

@@ -6,6 +6,8 @@ const AssetNodeFileHelper = preload("./asset_node_file_helper.gd")
 const SpecialGNFactory = preload("res://custom_graph_nodes/special_gn_factory.gd")
 const GraphNodeFactory = preload("res://custom_graph_nodes/graph_node_factory.gd")
 
+const UndoManager = preload("res://graph_editor/undo_manager.gd")
+
 enum ContextMenuItems {
     COPY_NODES = 1,
     CUT_NODES,
@@ -58,7 +60,7 @@ var serializer: CHANE_HyAssetNodeSerializer
 @onready var special_gn_factory: SpecialGNFactory = SpecialGNFactory.new()
 @onready var graph_node_factory: GraphNodeFactory = GraphNodeFactory.new()
 
-var undo_manager: UndoRedo = UndoRedo.new()
+var undo_manager: UndoManager = UndoManager.new()
 
 var cur_drop_info: Dictionary = {}
 
@@ -79,6 +81,8 @@ var file_helper: AssetNodeFileHelper
 var file_history_version: int = -10 
 
 func _ready() -> void:
+    undo_manager.set_editor(self)
+
     file_helper = AssetNodeFileHelper.new()
     file_helper.name = "FileHelper"
     file_helper.after_loaded.connect(on_after_file_loaded)

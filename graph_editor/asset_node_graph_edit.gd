@@ -1,6 +1,9 @@
 extends GraphEdit
 class_name CHANE_AssetNodeGraphEdit
 
+const UndoStep = preload("res://graph_editor/undo_step.gd")
+const GraphUndoStep = preload("res://graph_editor/graph_undo_step.gd")
+
 signal zoom_changed(new_zoom: float)
 
 const SpecialGNFactory = preload("res://custom_graph_nodes/special_gn_factory.gd")
@@ -76,7 +79,7 @@ var output_port_drop_offset: Vector2 = Vector2(2, -34)
 var input_port_drop_first_offset: Vector2 = Vector2(-2, -34)
 var input_port_drop_additional_offset: Vector2 = Vector2(0, -19)
 
-var undo_manager: UndoRedo = UndoRedo.new()
+var _undo_manager: UndoRedo = UndoRedo.new()
 var undo_tracked_nodes: Array[Node] = []
 var multi_connection_change: bool = false
 var cur_connection_added_ges: Array[GraphElement] = []
@@ -485,7 +488,7 @@ func _delete_request_refs(delete_ges: Array[GraphElement]) -> void:
         delete_ges.erase(root_gn)
     if delete_ges.size() == 0:
         return
-    remove_ges_with_connections_and_undo(delete_ges)
+    delete_graph_elements_with_undo(delete_ges)
 
 func delete_selected_nodes_inclusive() -> void:
     var inclusive_selected: Array[GraphElement] = get_inclusive_selected_ges() 
@@ -676,7 +679,7 @@ func _cut_refs(nodes_to_cut: Array[GraphElement]) -> void:
     # this gets set to false if we ever undo. so that we never try to re-use the cut nodes while they actually exist in the graph
     clipboard_was_from_cut = true
     # do the removal and create the undo step for removing them (separate from clipboard)
-    remove_ges_with_connections_and_undo(nodes_to_cut)
+    delete_graph_elements_with_undo(nodes_to_cut)
 
 func _copy_request() -> void:
     var selected_ges: Array[GraphElement] = get_selected_ges()
@@ -938,7 +941,7 @@ func clear_graph() -> void:
     
     cancel_connection_cut()
 
-    undo_manager.clear_history()
+    _undo_manager.clear_history()
     discard_copied_nodes()
 
     global_gn_counter = 0
@@ -1081,6 +1084,19 @@ func get_internal_connections_for_gns(gns: Array[CustomGraphNode]) -> Array[Dict
                 if to_gn in gns:
                     internal_connections.append(conn_info)
     return internal_connections
+
+func get_all_connections_for_graph_elements(ges: Array[GraphElement]) -> Array[Dictionary]:
+    var ge_connections: Array[Dictionary] = []
+    var added_gn_names: Array[String] = []
+    for ge in ges:
+        if not ge is CustomGraphNode:
+            continue
+        for conn_info in raw_connections(ge):
+            if conn_info["from_node"] in added_gn_names or conn_info["to_node"] in added_gn_names:
+                continue
+            ge_connections.append(conn_info)
+        added_gn_names.append(ge.name)
+    return ge_connections
 
 
 func get_an_roots_within_set(asset_node_set: Array[HyAssetNode]) -> Array[HyAssetNode]:
@@ -1340,6 +1356,13 @@ func on_begin_node_move() -> void:
             if parent_group not in selected_for_move:
                 remove_ge_from_group(ge, parent_group, true)
 
+    var undo_step: GraphUndoStep = _undo_manager.start_or_continue_graph_undo_step("Move Nodes", self)
+    undo_step.moved_graph_elements_from = moved_nodes_old_positions
+    var resized_ges: Dictionary[GraphElement, Vector2] = {}
+    for group in moved_groups_old_sizes:
+        resized_ges[group] = group.size
+    undo_step.resized_graph_elements_from = resized_ges
+
 func change_current_node_move_to_detach_mode() -> void:
     if not is_moving_nodes():
         push_warning("change_current_node_move_to_detach_mode: called while not moving nodes")
@@ -1393,6 +1416,7 @@ func get_graph_elements_cur_groups(ges: Array[GraphElement], include_all_groups:
             cur_groups[ge] = named_groups[reverse_lookup_name[ge.name]]
     return cur_groups
 
+## Get all member relations of the provided graph elements, including both groups the ges are members of, and the members of groups in the ge list
 func get_graph_elements_cur_group_relations(ges: Array[GraphElement]) -> Array[Dictionary]:
     var group_relations: Array[Dictionary] = []
     var cur_groups_of_ges: Dictionary[GraphElement, GraphFrame] = get_graph_elements_cur_groups(ges)
@@ -1430,13 +1454,18 @@ func on_end_node_move() -> void:
 
 func _end_node_move_deferred() -> void:
     var selected_nodes: Array[GraphElement] = get_selected_ges()
-    # For now I'm keeping the undo step of moving and inserting into the connection separate
-    create_move_nodes_undo_step(selected_nodes)
+
     if selected_nodes.size() == 1 and selected_nodes[0] is CustomGraphNode:
         var gn_rect: = selected_nodes[0].get_global_rect().grow(-8).abs()
         var connections_overlapped: = get_connections_intersecting_with_rect(gn_rect)
         if try_inserting_graph_node_into_connections(selected_nodes[0], connections_overlapped):
             return
+
+    if not editor.undo_manager.is_creating_undo_step():
+        push_error("Node move ended, but there wasn't an active undo step to commit")
+    else:
+        # Commit the undo step we started when first dragging nodes
+        editor.undo_manager.commit_current_undo_step()
 
 func try_inserting_graph_node_into_connections(gn: CustomGraphNode, connections_overlapped: Array[Dictionary]) -> bool:
     if gn.node_type_schema.get("no_output", false):
@@ -1534,7 +1563,9 @@ func remove_ge_from_group(ge: GraphElement, group: GraphFrame, with_undo: bool) 
     var group_relation: = {"group": group, "member": ge}
     _break_group_relation(group_relation)
     if with_undo:
-        cur_removed_group_relations.append(group_relation)
+        var undo_step: GraphUndoStep = _undo_manager.start_or_continue_graph_undo_step("Remove Node From Group", self)
+        undo_step.removed_group_relations.append(group_relation)
+        editor.undo_manager.commit_if_new()
 
 func _break_group_relation(group_relation: Dictionary) -> void:
     var group: = group_relation["group"] as GraphFrame
@@ -1548,16 +1579,21 @@ func _break_group_relation(group_relation: Dictionary) -> void:
 func add_group_relations(group_relations: Array[Dictionary], with_undo: bool) -> void:
     _assign_group_relations(group_relations)
     if with_undo:
-        cur_added_group_relations.append_array(group_relations)
+        var undo_step: GraphUndoStep = _undo_manager.start_or_continue_graph_undo_step("Add Nodes To Groups", self)
+        undo_step.added_group_relations.append_array(group_relations)
+        editor.undo_manager.commit_if_new()
 
 func _assign_group_relations(group_relations: Array[Dictionary]) -> void:
     for group_relation in group_relations:
         _assign_group_relation(group_relation)
 
 func add_ge_to_group(ge: GraphElement, group: GraphFrame, with_undo: bool) -> void:
-    _assign_group_relation({"group": group, "member": ge})
+    var group_relation: = {"group": group, "member": ge}
+    _assign_group_relation(group_relation)
     if with_undo:
-        cur_added_group_relations.append({"group": group, "member": ge})
+        var undo_step: GraphUndoStep = _undo_manager.start_or_continue_graph_undo_step("Add Node To Group", self)
+        undo_step.removed_group_relations.append(group_relation)
+        editor.undo_manager.commit_if_new()
 
 func add_ges_to_group(ges: Array[GraphElement], group: GraphFrame) -> void:
     var ge_names: Array = []
@@ -1613,7 +1649,7 @@ func create_undo_connection_change_step() -> void:
     elif removed_ges.size() > 0:
         undo_step_name = "Remove Nodes (With Connections)"
 
-    undo_manager.create_action(undo_step_name)
+    _undo_manager.create_action(undo_step_name)
     
     # careful of the order of operations
     # we make sure to add relevant nodes before trying to connect them, and remove them after removing their connections
@@ -1624,15 +1660,15 @@ func create_undo_connection_change_step() -> void:
             if the_ge.get_meta("hy_asset_node_id", ""):
                 var the_an: HyAssetNode = an_lookup.get(the_ge.get_meta("hy_asset_node_id", ""))
                 the_ans[the_ge] = the_an
-        undo_manager.add_do_method(redo_add_ges.bind(added_ges, the_ans))
+        _undo_manager.add_do_method(redo_add_ges.bind(added_ges, the_ans))
 
     if added_conns.size() > 0:
-        undo_manager.add_do_method(add_multiple_connections.bind(added_conns, false))
+        _undo_manager.add_do_method(add_multiple_connections.bind(added_conns, false))
     if removed_conns.size() > 0:
-        undo_manager.add_do_method(remove_multiple_connections.bind(removed_conns, false))
+        _undo_manager.add_do_method(remove_multiple_connections.bind(removed_conns, false))
 
     if removed_ges.size() > 0:
-        undo_manager.add_do_method(redo_remove_ges.bind(removed_ges))
+        _undo_manager.add_do_method(redo_remove_ges.bind(removed_ges))
         
         cur_removed_group_relations = get_graph_elements_cur_group_relations(removed_ges)
     
@@ -1644,15 +1680,15 @@ func create_undo_connection_change_step() -> void:
             if an_id:
                 var the_an: HyAssetNode = an_lookup.get(an_id)
                 the_ans[the_ge] = the_an
-        undo_manager.add_undo_method(undo_remove_ges.bind(removed_ges, the_ans))
+        _undo_manager.add_undo_method(undo_remove_ges.bind(removed_ges, the_ans))
 
     if added_conns.size() > 0:
-        undo_manager.add_undo_method(remove_multiple_connections.bind(added_conns, false))
+        _undo_manager.add_undo_method(remove_multiple_connections.bind(added_conns, false))
     if removed_conns.size() > 0:
-        undo_manager.add_undo_method(add_multiple_connections.bind(removed_conns, false))
+        _undo_manager.add_undo_method(add_multiple_connections.bind(removed_conns, false))
 
     if added_ges.size() > 0:
-        undo_manager.add_undo_method(undo_add_ges.bind(added_ges))
+        _undo_manager.add_undo_method(undo_add_ges.bind(added_ges))
     
     # Add group membership changes from adding or removing nodes
     if removed_ges.size() > 0:
@@ -1660,46 +1696,15 @@ func create_undo_connection_change_step() -> void:
     elif added_ges.size() > 0:
         add_group_membership_to_cur_undo_action(false, true)
     
-    undo_manager.commit_action(false)
+    _undo_manager.commit_action(false)
 
-func remove_ges_with_connections_and_undo(ges_to_remove: Array[GraphElement]) -> void:
-    if (cur_connection_added_ges.size() > 0 or
-        cur_connection_removed_ges.size() > 0 or
-        cur_added_connections.size() > 0 or
-        cur_removed_connections.size() > 0):
-            push_error("Trying to remove graph nodes during a pending undo step")
-            return
+func delete_graph_elements_with_undo(ges_to_remove: Array[GraphElement], action_name: String = "Delete Nodes") -> void:
+    var undo_step: UndoStep = editor.undo_manager.start_or_continue_undo_step(action_name)
+    undo_step.delete_graph_elements(ges_to_remove, self)
+    editor.undo_manager.commit_if_new()
 
-    var connections_needing_removal: Array[Dictionary] = []
-    for graph_element in ges_to_remove:
-        var gn: = graph_element as CustomGraphNode
-        if not gn:
-            continue
-        var gn_connections: Array[Dictionary] = raw_connections(gn)
-        for conn_info in gn_connections:
-            if conn_info["from_node"] == gn.name:
-                # exclude outgoing connections to other removed nodes (they would be duplicates of the below case)
-                var to_gn: = get_node(NodePath(conn_info["to_node"])) as GraphElement
-                if to_gn in ges_to_remove:
-                    continue
-                connections_needing_removal.append(conn_info)
-            elif conn_info["to_node"] == gn.name:
-                connections_needing_removal.append(conn_info)
-            else:
-                print_debug("connection neither from nor to the node it was retreived by? node: %s, connection info: %s" % [gn.name, conn_info])
-
-    if not connections_needing_removal:
-        remove_unconnected_ges_with_undo(ges_to_remove)
-    else:
-        cur_connection_removed_ges.append_array(ges_to_remove)
-        cur_removed_connections.append_array(connections_needing_removal)
-        remove_multiple_connections(connections_needing_removal, false)
-        create_undo_connection_change_step()
-        remove_multiple_ges_without_undo(ges_to_remove)
-
-func remove_multiple_ges_without_undo(ges_to_remove: Array[GraphElement]) -> void:
-    for ge in ges_to_remove:
-        remove_ge_without_undo(ge)
+func remove_groups_only_with_undo(groups_to_remove: Array[GraphFrame]) -> void:
+    delete_graph_elements_with_undo(Array(groups_to_remove, TYPE_OBJECT, &"GraphElement", null), "Delete Groups Only")
 
 func remove_ge_without_undo(ge: GraphElement) -> void:
     var an_id: String = ge.get_meta("hy_asset_node_id", "")
@@ -1709,98 +1714,25 @@ func remove_ge_without_undo(ge: GraphElement) -> void:
             remove_asset_node(asset_node)
     remove_graph_element_child(ge)
 
-func remove_unconnected_ges_with_undo(ges_to_remove: Array[GraphElement]) -> void:
-    unedited = false
-    undo_manager.create_action("Remove Graph Nodes")
 
-    var removed_asset_nodes: Dictionary[GraphElement, HyAssetNode] = {}
-    for the_ge in ges_to_remove:
-        if the_ge.get_meta("hy_asset_node_id", ""):
-            removed_asset_nodes[the_ge] = an_lookup[the_ge.get_meta("hy_asset_node_id")]
-    
-    var removed_ge_list: = ges_to_remove.duplicate()
-
-    undo_manager.add_do_method(redo_remove_ges.bind(removed_ge_list))
-    
-    undo_manager.add_undo_method(undo_remove_ges.bind(removed_ge_list, removed_asset_nodes))
-    
-    cur_removed_group_relations = get_graph_elements_cur_group_relations(ges_to_remove)
-    add_group_membership_to_cur_undo_action(true)
-
-    undo_manager.commit_action(false)
-    remove_multiple_ges_without_undo(ges_to_remove)
-    refresh_graph_elements_in_frame_status()
-
-func remove_groups_only_with_undo(groups_to_remove: Array[GraphFrame]) -> void:
-    unedited = false
-    var removed_ge_list: Array[GraphElement] = []
-    var group_relations: = get_groups_cur_relations(groups_to_remove)
-    removed_ge_list.append_array(groups_to_remove)
-    undo_manager.create_action("Remove Groups")
-
-    undo_manager.add_do_method(redo_remove_ges.bind(removed_ge_list))
-
-    # just because we need the typed version of the dictionary
-    var rm_an: Dictionary[GraphElement, HyAssetNode] = {}
-    undo_manager.add_undo_method(undo_remove_ges.bind(removed_ge_list, rm_an))
-    
-    cur_removed_group_relations = group_relations
-    add_group_membership_to_cur_undo_action(true)
-
-    undo_manager.commit_action(true)
 
 func create_add_new_ge_undo_step(the_new_ge: GraphElement) -> void:
     create_add_new_ges_undo_step([the_new_ge])
 
 func create_add_new_ges_undo_step(new_ges: Array[GraphElement]) -> void:
     unedited = false
-    undo_manager.create_action("Add New Graph Nodes")
+    _undo_manager.create_action("Add New Graph Nodes")
     var added_asset_nodes: Dictionary[GraphElement, HyAssetNode] = {}
     for the_ge in new_ges:
         var an_id: String = the_ge.get_meta("hy_asset_node_id", "")
         if an_id:
             added_asset_nodes[the_ge] = an_lookup[an_id]
 
-    undo_manager.add_do_method(redo_add_ges.bind(new_ges, added_asset_nodes))
+    _undo_manager.add_do_method(redo_add_ges.bind(new_ges, added_asset_nodes))
     
-    undo_manager.add_undo_method(undo_add_ges.bind(new_ges))
+    _undo_manager.add_undo_method(undo_add_ges.bind(new_ges))
 
-    undo_manager.commit_action(false)
-
-func create_move_nodes_undo_step(moved_nodes: Array[GraphElement]) -> void:
-    unedited = false
-    if moved_nodes.size() == 0:
-        return
-    
-    var old_positions: Dictionary[GraphElement, Vector2] = moved_nodes_old_positions.duplicate()
-    var old_group_sizes: Dictionary[GraphFrame, Vector2] = moved_groups_old_sizes.duplicate()
-    moved_nodes_old_positions.clear()
-    moved_groups_old_sizes.clear()
-    cur_move_detached_nodes = false
-
-    var new_positions: Dictionary[GraphElement, Vector2] = {}
-    var new_group_sizes: Dictionary[GraphFrame, Vector2] = {}
-    for ge in moved_nodes:
-        new_positions[ge] = ge.position_offset
-        if ge is GraphFrame:
-            new_group_sizes[ge as GraphFrame] = ge.size
-    undo_manager.create_action("Move Nodes")
-
-    # TODO: Positions and group sizes needs to also be handled every time add_group_membership_to_cur_undo_action is called
-    # instead of just here in move nodes undo step
-    var removed_group_relations: Array[Dictionary] = cur_removed_group_relations.duplicate_deep()
-    var added_group_relations: Array[Dictionary] = cur_added_group_relations.duplicate_deep()
-    cur_removed_group_relations.clear()
-    cur_added_group_relations.clear()
-    add_group_membership_pre_move_undo_actions(removed_group_relations, added_group_relations)
-
-    undo_manager.add_do_method(_set_offsets_and_group_sizes.bind(new_positions, new_group_sizes))
-
-    undo_manager.add_undo_method(_set_offsets_and_group_sizes.bind(old_positions, old_group_sizes))
-    
-    add_group_membership_post_move_undo_actions(added_group_relations, removed_group_relations)
-
-    undo_manager.commit_action(false)
+    _undo_manager.commit_action(false)
 
 ## Add appropriate bindings for undoing/redoing group membership changes to an existing undo, call after all other steps are added
 ## If removing nodes entirely, set for_removal to true, for adding nodes, set for_adding to true
@@ -1815,30 +1747,30 @@ func add_group_membership_to_cur_undo_action(for_removal: bool = false, for_addi
     # since re-doing node removal will already remove the node from the group.
     # it actually makes the order of operations tougher, it will error if trying to remove an already removed node from a group, so I'm just skipping it
     if removed_group_relations.size() > 0 and not for_removal:
-        undo_manager.add_do_method(_break_group_relations.bind(removed_group_relations))
+        _undo_manager.add_do_method(_break_group_relations.bind(removed_group_relations))
     if added_group_relations.size() > 0:
-        undo_manager.add_do_method(_assign_group_relations.bind(added_group_relations))
-    undo_manager.add_do_method(refresh_graph_elements_in_frame_status)
+        _undo_manager.add_do_method(_assign_group_relations.bind(added_group_relations))
+    _undo_manager.add_do_method(refresh_graph_elements_in_frame_status)
 
     if added_group_relations.size() > 0:
-        undo_manager.add_undo_method(_break_group_relations.bind(added_group_relations))
+        _undo_manager.add_undo_method(_break_group_relations.bind(added_group_relations))
     if removed_group_relations.size() > 0 and not for_adding:
-        undo_manager.add_undo_method(_assign_group_relations.bind(removed_group_relations))
-    undo_manager.add_undo_method(refresh_graph_elements_in_frame_status)
+        _undo_manager.add_undo_method(_assign_group_relations.bind(removed_group_relations))
+    _undo_manager.add_undo_method(refresh_graph_elements_in_frame_status)
 
 func add_group_membership_pre_move_undo_actions(removed_relations: Array[Dictionary], added_relations: Array[Dictionary]) -> void:
     if removed_relations.size() > 0:
-        undo_manager.add_do_method(_break_group_relations.bind(removed_relations))
+        _undo_manager.add_do_method(_break_group_relations.bind(removed_relations))
     if added_relations.size() > 0:
-        undo_manager.add_undo_method(_break_group_relations.bind(added_relations))
+        _undo_manager.add_undo_method(_break_group_relations.bind(added_relations))
 
 func add_group_membership_post_move_undo_actions(added_relations: Array[Dictionary], removed_relations: Array[Dictionary]) -> void:
     if added_relations.size() > 0:
-        undo_manager.add_do_method(_assign_group_relations.bind(added_relations))
-        undo_manager.add_do_method(refresh_graph_elements_in_frame_status)
+        _undo_manager.add_do_method(_assign_group_relations.bind(added_relations))
+        _undo_manager.add_do_method(refresh_graph_elements_in_frame_status)
     if removed_relations.size() > 0:
-        undo_manager.add_undo_method(_assign_group_relations.bind(removed_relations))
-        undo_manager.add_undo_method(refresh_graph_elements_in_frame_status)
+        _undo_manager.add_undo_method(_assign_group_relations.bind(removed_relations))
+        _undo_manager.add_undo_method(refresh_graph_elements_in_frame_status)
 
 func undo_remove_ges(the_ges: Array[GraphElement], the_ans: Dictionary[GraphElement, HyAssetNode]) -> void:
     for the_ge in the_ges:
@@ -2403,16 +2335,16 @@ func create_change_title_undo_step(graph_element: GraphElement, old_title: Strin
         return
     unedited = false
     var new_title: String = graph_element.title
-    undo_manager.create_action("Change Node Title")
+    _undo_manager.create_action("Change Node Title")
     
     if graph_element is CustomGraphNode:
-        undo_manager.add_do_method(_set_gn_title.bind(graph_element, new_title))
-        undo_manager.add_undo_method(_set_gn_title.bind(graph_element, old_title))
+        _undo_manager.add_do_method(_set_gn_title.bind(graph_element, new_title))
+        _undo_manager.add_undo_method(_set_gn_title.bind(graph_element, old_title))
     else:
-        undo_manager.add_do_method(_set_group_title.bind(graph_element, new_title))
-        undo_manager.add_undo_method(_set_group_title.bind(graph_element, old_title))
+        _undo_manager.add_do_method(_set_group_title.bind(graph_element, new_title))
+        _undo_manager.add_undo_method(_set_group_title.bind(graph_element, old_title))
 
-    undo_manager.commit_action(false)
+    _undo_manager.commit_action(false)
 
 
 
@@ -2504,19 +2436,19 @@ func set_group_color_with_undo(group: GraphFrame, group_color_name: String) -> v
         return
 
     var old_color_name: String = group.get_meta("custom_color_name", "")
-    undo_manager.create_action("Change Group Accent Color")
+    _undo_manager.create_action("Change Group Accent Color")
     
-    undo_manager.add_do_method(set_group_custom_accent_color.bind(group, group_color_name))
-    undo_manager.add_undo_method(set_group_custom_accent_color.bind(group, old_color_name))
+    _undo_manager.add_do_method(set_group_custom_accent_color.bind(group, group_color_name))
+    _undo_manager.add_undo_method(set_group_custom_accent_color.bind(group, old_color_name))
 
-    undo_manager.commit_action(true)
+    _undo_manager.commit_action(true)
     refresh_graph_elements_in_frame_status()
 
 func add_group_color_with_undo(group: GraphFrame, group_color_name: String) -> void:
-    undo_manager.create_action("Add Group Accent Color")
-    undo_manager.add_do_method(set_group_custom_accent_color.bind(group, group_color_name))
-    undo_manager.add_undo_method(remove_group_accent_color.bind(group))
-    undo_manager.commit_action(true)
+    _undo_manager.create_action("Add Group Accent Color")
+    _undo_manager.add_do_method(set_group_custom_accent_color.bind(group, group_color_name))
+    _undo_manager.add_undo_method(remove_group_accent_color.bind(group))
+    _undo_manager.commit_action(true)
     refresh_graph_elements_in_frame_status()
 
 func get_default_group_color_name() -> String:
@@ -2590,66 +2522,34 @@ func add_new_group_pending_title_undo_step(at_pos_offset: Vector2, into_group: G
         # regardless of if the default title is changed or not
         add_ge_to_group(new_group, into_group, true)
     var title_edit_popup: = open_group_title_edit(new_group)
-    title_edit_popup.tree_exiting.connect(create_new_group_undo_step.bind(new_group, into_group))
+    title_edit_popup.tree_exiting.connect(create_new_group_with_undo.bind(new_group, into_group))
 
-func create_new_group_undo_step(new_group: GraphFrame, into_group: GraphFrame) -> void:
-    undo_manager.create_action("Add New Group")
-    var new_group_pos_offset: = new_group.position_offset
-    var new_group_title: = new_group.title
-    var new_group_size: = new_group.size
-    var add_new_group_callback: = add_new_group.bind(new_group_pos_offset, new_group_title, new_group_size)
-    if new_group.get_meta("has_custom_color", false):
-        var new_group_accent_color: String = new_group.get_meta("custom_color_name", "")
-        add_new_group_callback = add_new_colored_group.bind(new_group_accent_color, new_group_pos_offset, new_group_title, new_group_size)
-
-    undo_manager.add_do_method(add_new_group_callback)
-    
-    undo_manager.add_undo_method(_undo_redo_remove_ge.bind(new_group))
-    
+func create_new_group_with_undo(new_group: GraphFrame, into_group: GraphFrame) -> void:
+    var undo_step: = editor.undo_manager.start_or_continue_graph_undo_step("Add New Group", self)
+    undo_step.added_graph_elements.append(new_group)
     if into_group:
-        add_group_membership_to_cur_undo_action(false, true)
-
-    undo_manager.commit_action(false)
+        undo_step.added_group_relations.append({ "group": into_group, "member": new_group })
+    editor.undo_manager.commit_if_new()
 
 func set_groups_shrinkwrap_with_undo(groups: Array[GraphFrame], shrinkwrap: bool) -> void:
-    var old_group_shrinkwrap: Dictionary[GraphFrame, bool] = {}
-    var new_group_shrinkwrap: Dictionary[GraphFrame, bool] = {}
-    var old_group_positions: Dictionary[GraphElement, Vector2] = {}
-    var new_group_positions: Dictionary[GraphElement, Vector2] = {}
-    var old_group_sizes: Dictionary[GraphFrame, Vector2] = {}
-    var new_group_sizes: Dictionary[GraphFrame, Vector2] = {}
-    for group in get_all_groups():
-        if group in groups:
-            old_group_shrinkwrap[group] = group.autoshrink_enabled
-            new_group_shrinkwrap[group] = shrinkwrap
-        old_group_positions[group] = group.position_offset
-        old_group_sizes[group] = group.size
-    
-    _set_groups_shrinkwrap(new_group_shrinkwrap)
-    
+    var undo_step: = editor.undo_manager.start_or_continue_graph_undo_step("Set Group Shrinkwrap", self)
     for group in groups:
-        new_group_positions[group] = group.position_offset
-        new_group_sizes[group] = group.size
-    
-    undo_manager.create_action("Change Group Shrinkwrap")
-
-    undo_manager.add_do_method(_set_groups_shrinkwrap.bind(new_group_shrinkwrap))
-    undo_manager.add_do_method(_set_offsets_and_group_sizes.bind(new_group_positions, new_group_sizes))
-
-    undo_manager.add_undo_method(_set_groups_shrinkwrap.bind(old_group_shrinkwrap))
-    undo_manager.add_undo_method(_set_offsets_and_group_sizes.bind(old_group_positions, old_group_sizes))
-    undo_manager.commit_action(false)
+        if group.autoshrink_enabled != shrinkwrap:
+            undo_step.group_shrinkwrap_changed_from[group] = group.autoshrink_enabled
+            undo_step.group_shrinkwrap_changed_to[group] = shrinkwrap
+    editor.undo_manager.commit_if_new()
 
 func _set_groups_shrinkwrap(group_shrinkwraps: Dictionary[GraphFrame, bool]) -> void:
     for group in group_shrinkwraps.keys():
         group.autoshrink_enabled = group_shrinkwraps[group]
 
 func _link_to_group_request(graph_element_names: Array, group_name: StringName) -> void:
-    _attach_ge_names_to_group(graph_element_names, group_name)
-    cur_added_group_relations.append({
+    var undo_step: = editor.undo_manager.start_or_continue_graph_undo_step("Add Nodes to Group", self)
+    undo_step.added_group_relations.append({
         "group": get_node(NodePath(group_name)) as GraphFrame,
         "member": get_node(NodePath(graph_element_names[0])) as GraphElement,
     })
+    editor.undo_manager.commit_if_new()
 
 func bring_group_to_front(group: GraphFrame) -> void:
     group.raise_request.emit()
