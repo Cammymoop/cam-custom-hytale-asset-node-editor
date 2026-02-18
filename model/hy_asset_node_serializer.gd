@@ -644,9 +644,14 @@ func serialize_node_editor_metadata(editor: CHANE_AssetNodeEditor) -> Dictionary
     var root_an_pos: = editor.asset_node_aux_data[editor.root_asset_node.an_node_id].position
     var fallback_pos: = get_serialize_offset_scaled_pos(root_an_pos - Vector2(200, 200))
     
-    for an_id in editor.asset_node_aux_data:
-        var aux: = editor.asset_node_aux_data[an_id]
+    for an_id in editor.all_asset_nodes.keys():
         var an: = editor.all_asset_nodes[an_id]
+        if not editor.asset_node_aux_data.has(an_id):
+            push_warning("No aux data for asset node %s, using fallback position" % an_id)
+            serialized_node_meta[an_id] = serialize_an_metadata(an, fallback_pos)
+            continue
+
+        var aux: = editor.asset_node_aux_data[an_id]
         serialized_node_meta[an_id] = serialize_an_metadata(an, aux.position)
 
     var serialized_metadata: Dictionary = { MetadataKeys.NodesMeta: serialized_node_meta }

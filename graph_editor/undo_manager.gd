@@ -1,0 +1,72 @@
+extends Node
+
+const UndoStep = preload("res://graph_editor/undo_step.gd")
+const GraphUndoStep = preload("res://graph_editor/graph_undo_step.gd")
+
+var undo_redo: UndoRedo = UndoRedo.new()
+
+var active_undo_step: UndoStep = null
+var is_new_step: bool = false
+
+func clear() -> void:
+    undo_redo.clear_history(true)
+
+## Call this when saving to solidify the current step so the exact state where the file was saved is always accessible and not lost in a merge
+func prevent_merges() -> void:
+    if active_undo_step and active_undo_step.has_existing_action:
+        active_undo_step = null
+
+func is_creating_undo_step() -> bool:
+    return active_undo_step != null
+
+func start_undo_step(action_name: String) -> UndoStep:
+    if active_undo_step:
+        push_error("Starting an undo step '%s' while one is active but not committed ('%s')" % [action_name, active_undo_step.action_name])
+        print_debug("Starting an undo step '%s' while one is active but not committed ('%s')" % [action_name, active_undo_step.action_name])
+        commit_current_undo_step()
+
+    var new_undo_step: UndoStep = UndoStep.new()
+    new_undo_step.action_name = action_name
+    active_undo_step = new_undo_step
+    is_new_step = true
+    return new_undo_step
+
+func start_undo_graph_step(action_name: String, for_graph: CHANE_AssetNodeGraphEdit) -> GraphUndoStep:
+    var undo_step: = start_undo_step(action_name)
+    return undo_step.get_undo_for_graph(for_graph)
+
+func start_or_continue_undo_step(action_name: String) -> UndoStep:
+    if active_undo_step:
+        is_new_step = false
+        return active_undo_step
+    return start_undo_step(action_name)
+
+func start_or_continue_graph_undo_step(action_name: String, for_graph: CHANE_AssetNodeGraphEdit) -> GraphUndoStep:
+    var undo_step: = start_or_continue_undo_step(action_name)
+    return undo_step.get_undo_for_graph(for_graph)
+
+func rename_current_undo_step(new_action_name: String) -> void:
+    if active_undo_step:
+        active_undo_step.action_name = new_action_name
+
+func commit_if_new() -> void:
+    if active_undo_step and is_new_step:
+        commit_current_undo_step()
+
+func commit_current_undo_step() -> void:
+    if not active_undo_step:
+        push_error("No active undo step to commit")
+        return
+
+    active_undo_step.commit(undo_redo)
+    active_undo_step = null
+
+
+func has_undo() -> bool:
+    return undo_redo.has_undo()
+func has_redo() -> bool:
+    return undo_redo.has_redo()
+func undo() -> void:
+    undo_redo.undo()
+func redo() -> void:
+    undo_redo.redo()

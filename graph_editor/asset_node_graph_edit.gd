@@ -4,7 +4,6 @@ class_name CHANE_AssetNodeGraphEdit
 signal zoom_changed(new_zoom: float)
 
 const SpecialGNFactory = preload("res://custom_graph_nodes/special_gn_factory.gd")
-const GraphNodeFactory = preload("res://custom_graph_nodes/graph_node_factory.gd")
 
 @export var save_formatted_json: = true
 @export_file_path("*.json") var test_json_file: String = ""
@@ -31,44 +30,9 @@ var root_node: HyAssetNode = null
 
 @export var popup_menu_root: PopupMenuRoot
 @onready var special_gn_factory: SpecialGNFactory = $SpecialGNFactory
-@onready var graph_node_factory: GraphNodeFactory = $GraphNodeFactory
 
 var asset_node_meta: Dictionary[String, Dictionary] = {}
 var all_meta: Dictionary = {}
-
-enum ContextMenuItems {
-    COPY_NODES = 1,
-    CUT_NODES,
-    CUT_NODES_DEEP,
-    PASTE_NODES,
-    DUPLICATE_NODES,
-
-    DELETE_NODES,
-    DELETE_NODES_DEEP,
-    DELETE_GROUPS_ONLY,
-    DISSOLVE_NODES,
-    BREAK_CONNECTIONS,
-    
-    EDIT_TITLE,
-    EDIT_GROUP_TITLE,
-    
-    CHANGE_GROUP_COLOR,
-    SET_GROUP_SHRINKWRAP,
-    SET_GROUP_NO_SHRINKWRAP,
-
-    SELECT_SUBTREE,
-    SELECT_SUBTREE_GREEDY,
-    SELECT_GROUP_NODES,
-    SELECT_GROUPS_NODES,
-    SELECT_ALL,
-    DESELECT_ALL,
-    INVERT_SELECTION,
-    
-    CREATE_NEW_NODE,
-    CREATE_NEW_GROUP,
-    
-    NEW_FILE,
-}
 
 
 var an_lookup: Dictionary[String, HyAssetNode] = {}
@@ -108,12 +72,6 @@ var context_menu_pos_offset: Vector2 = Vector2.ZERO
 var context_menu_movement_acc: = 0.0
 var context_menu_ready: bool = false
 
-var dropping_new_node_at: Vector2 = Vector2.ZERO
-var next_drop_has_connection: Dictionary = {}
-var next_drop_has_position: bool = false
-var next_drop_is_in_group: GraphFrame = null
-var next_drop_conn_value_type: String = ""
-
 var output_port_drop_offset: Vector2 = Vector2(2, -34)
 var input_port_drop_first_offset: Vector2 = Vector2(-2, -34)
 var input_port_drop_additional_offset: Vector2 = Vector2(0, -19)
@@ -147,14 +105,8 @@ func _ready() -> void:
     serializer = CHANE_HyAssetNodeSerializer.new()
     serializer.name = "ANSerializer"
     add_child(serializer, true)
-    
-    graph_node_factory.special_gn_factory = special_gn_factory
 
     assert(popup_menu_root != null, "Popup menu root is not set, please set it in the inspector")
-    popup_menu_root.new_gn_menu.node_type_picked.connect(on_new_node_type_picked)
-    popup_menu_root.new_gn_menu.cancelled.connect(on_new_node_menu_cancelled)
-    
-    popup_menu_root.popup_menu_opened.connect(on_popup_menu_opened)
     
     focus_exited.connect(on_focus_exited)
     
@@ -200,6 +152,11 @@ func set_editor(new_editor: CHANE_AssetNodeEditor) -> void:
     editor = new_editor
     
 func setup_graph_edit_connection_types() -> void:
+    for extra_type_name in more_type_names:
+        var type_idx: = type_names.size()
+        type_names[type_idx] = extra_type_name
+        #add_valid_left_disconnect_type(type_idx)
+
     type_names[type_names.size()] = "Unknown"
     
     for val_type_name in SchemaManager.schema.value_types:
@@ -208,38 +165,57 @@ func setup_graph_edit_connection_types() -> void:
         add_valid_connection_type(val_type_idx, val_type_idx)
         #add_valid_left_disconnect_type(val_type_idx)
 
-    for extra_type_name in more_type_names:
-        var type_idx: = type_names.size()
-        type_names[type_idx] = extra_type_name
-        #add_valid_left_disconnect_type(type_idx)
-
     for type_id in type_names.keys():
         type_id_lookup[type_names[type_id]] = type_id
+
+func get_left_type_of_conn_info(connection_info: Dictionary) -> String:
+    var unknown_connection_type: int = type_id_lookup["Unknown"]
+    var left_gn: GraphNode = get_node(NodePath(connection_info["from_node"]))
+    var raw_type: int = left_gn.get_slot_type_right(connection_info["from_port"])
+    if raw_type <= unknown_connection_type:
+        return ""
+    return type_names[raw_type]
+
+func get_right_type_of_conn_info(connection_info: Dictionary) -> String:
+    var unknown_connection_type: int = type_id_lookup["Unknown"]
+    var right_gn: GraphNode = get_node(NodePath(connection_info["to_node"]))
+    var raw_type: int = right_gn.get_slot_type_left(connection_info["to_port"])
+    if raw_type <= unknown_connection_type:
+        return ""
+    return type_names[raw_type]
+
+func get_type_of_conn_info(connection_info: Dictionary) -> String:
+    var left_type: String = get_left_type_of_conn_info(connection_info)
+    var right_type: String = get_right_type_of_conn_info(connection_info)
+    if left_type == "":
+        return right_type
+    elif right_type == "":
+        return left_type
+    elif left_type != right_type:
+        return ""
+    return left_type
 
 func on_focus_exited() -> void:
     if connection_cut_active:
         cancel_connection_cut()
     mouse_panning = false
 
-func on_popup_menu_opened() -> void:
-    prints("popup menu opened, releasing focus", has_focus())
-    if has_focus():
-        release_focus()
-
 func _shortcut_input(event: InputEvent) -> void:
-    if not popup_menu_root.is_menu_visible():
-        if Input.is_action_just_pressed_by_event("graph_select_all_nodes", event, true):
-            accept_event()
-            select_all()
-        elif Input.is_action_just_pressed_by_event("graph_deselect_all_nodes", event, true):
-            accept_event()
-            deselect_all()
-        elif Input.is_action_just_pressed_by_event("cut_inclusive_shortcut", event, true):
-            accept_event()
-            cut_selected_nodes_inclusive()
-        elif Input.is_action_just_pressed_by_event("delete_inclusive_shortcut", event, true):
-            accept_event()
-            delete_selected_nodes_inclusive()
+    if not editor.are_shortcuts_allowed():
+        return
+
+    if Input.is_action_just_pressed_by_event("graph_select_all_nodes", event, true):
+        accept_event()
+        select_all()
+    elif Input.is_action_just_pressed_by_event("graph_deselect_all_nodes", event, true):
+        accept_event()
+        deselect_all()
+    elif Input.is_action_just_pressed_by_event("cut_inclusive_shortcut", event, true):
+        accept_event()
+        cut_selected_nodes_inclusive()
+    elif Input.is_action_just_pressed_by_event("delete_inclusive_shortcut", event, true):
+        accept_event()
+        delete_selected_nodes_inclusive()
 
 func _process(_delta: float) -> void:
     if is_moving_nodes() and not cur_move_detached_nodes and Util.is_shift_pressed():
@@ -267,20 +243,7 @@ func setup_file_menu() -> void:
     file_menu_menu.id_pressed.connect(on_file_menu_id_pressed)
 
 func on_file_menu_id_pressed(id: int) -> void:
-    var menu_item_text: = file_menu_menu.get_item_text(file_menu_menu.get_item_index(id))
-    match menu_item_text:
-        "Open":
-            FileDialogHandler.show_open_file_dialog()
-        "Save":
-            if editor.file_helper.has_saved_to_cur_file:
-                #save_to_json_file(cur_file_path + "/" + cur_file_name)
-                editor.resave_current_file()
-            else:
-                FileDialogHandler.show_save_file_dialog(cur_file_name != "")
-        "Save As ...":
-            FileDialogHandler.show_save_file_dialog(false)
-        "New":
-            popup_menu_root.show_new_file_type_chooser()
+    editor.on_file_menu_id_pressed(id, file_menu_menu)
 
 func setup_settings_menu() -> void:
     settings_menu_btn = preload("res://ui/settings_menu.tscn").instantiate()
@@ -296,23 +259,7 @@ func on_settings_menu_about_to_popup() -> void:
     settings_menu_menu.set_item_checked(1, dbl_click_is_greedy)
 
 func on_settings_menu_index_pressed(index: int) -> void:
-    var menu_item_text: = settings_menu_menu.get_item_text(index)
-    match menu_item_text:
-        "Customize Theme Colors":
-            popup_menu_root.show_theme_editor()
-    if index == 1:
-        ANESettings.set_subtree_greedy_mode(not ANESettings.select_subtree_is_greedy)
-
-func new_file_metadata_setup() -> void:
-    asset_node_meta.clear()
-    all_meta = {
-        "$Nodes": {},
-        "$FloatingNodes": [],
-        "$Groups": [],
-        "$Comments": [],
-        "$Links": {},
-        "$WorkspaceID": hy_workspace_id,
-    }
+    editor.on_settings_menu_index_pressed(index, settings_menu_menu)
 
 func snap_ge(ge: GraphElement) -> void:
     if snapping_enabled:
@@ -338,47 +285,6 @@ func _gui_input(event: InputEvent) -> void:
             return
         handle_mouse_event(event as InputEventMouse)
         return
-
-func _unhandled_key_input(event: InputEvent) -> void:
-    # These shortcuts have priority even when a non-exclusive popup is open
-    # but they will not be triggered if another control has keyboard focus and accepts the event (e.g. if space is show_new_node_menu, typing a space into a LineEdit will not trigger it)
-    if Input.is_action_just_pressed_by_event("show_new_node_menu", event, true):
-        if not editor.is_loaded:
-            popup_menu_root.show_new_file_type_chooser()
-        elif not popup_menu_root.is_menu_visible():
-            show_new_node_menu()
-            get_viewport().set_input_as_handled()
-
-    if Input.is_action_just_pressed_by_event("ui_redo", event, true):
-        if undo_manager.has_redo():
-            print("Redoing")
-            undo_manager.redo()
-        else:
-            GlobalToaster.show_toast_message("Nothing to Redo")
-    elif Input.is_action_just_pressed_by_event("ui_undo", event, true):
-        if undo_manager.has_undo():
-            prints("Undoing", undo_manager.get_current_action_name())
-            # undoing could mean that the previously cut nodes are now back in the graph, assume we need to treat the cut like a copy now
-            if copied_nodes and clipboard_was_from_cut:
-                clipboard_was_from_cut = false
-            undo_manager.undo()
-            #if not undo_manager.has_undo():
-                #unedited = true
-        else:
-            GlobalToaster.show_toast_message("Nothing to Undo")
-
-func show_new_node_menu() -> void:
-    clear_next_drop()
-    popup_menu_root.show_new_gn_menu()
-
-func show_new_node_menu_for_pos(at_pos_offset: Vector2, in_group: GraphFrame = null) -> void:
-    clear_next_drop()
-    # TODO: we should really be storing the dropped pos as a position offset since that wont change if scroll or zoom somewhow changes in the meantime
-    dropping_new_node_at = position_offset_to_global_pos(at_pos_offset)
-    next_drop_has_position = true
-    if in_group:
-        next_drop_is_in_group = in_group
-    popup_menu_root.show_new_gn_menu()
 
 func _connection_request(from_gn_name: StringName, from_port: int, to_gn_name: StringName, to_port: int) -> void:
     _add_connection(from_gn_name, from_port, to_gn_name, to_port)
@@ -411,7 +317,7 @@ func _add_connection(from_gn_name: StringName, from_port: int, to_gn_name: Strin
     var from_gn: GraphNode = get_node(NodePath(from_gn_name))
     var to_gn: GraphNode = get_node(NodePath(to_gn_name))
     
-    editor.connect_graph_nodes(from_gn, from_port, to_gn, to_port, self)
+    #editor.connect_graph_nodes(from_gn, from_port, to_gn, to_port, self)
     
     # disconnect any existing outputs (only allowing one output connection)
     #var existing_output_conn_infos: = raw_out_connections(to_gn)
@@ -585,60 +491,56 @@ func delete_selected_nodes_inclusive() -> void:
     var inclusive_selected: Array[GraphElement] = get_inclusive_selected_ges() 
     _delete_request_refs(inclusive_selected)
 
-func _connect_right_request(from_gn_name: StringName, from_port: int, dropped_pos: Vector2) -> void:
-    dropping_new_node_at = dropped_pos
-    next_drop_has_position = true
-    next_drop_has_connection = {
+func get_drop_offset_for_output_port() -> Vector2:
+    return output_port_drop_offset
+
+func get_drop_offset_for_input_port(input_port_idx: int) -> Vector2:
+    return input_port_drop_first_offset + (input_port_drop_additional_offset * input_port_idx)
+
+func _connect_right_request(from_gn_name: StringName, from_port: int, dropped_local_pos: Vector2) -> void:
+    var connection_info: = {
         "from_node": from_gn_name,
         "from_port": from_port,
-        "to_port": 0,
     }
-    var from_an: HyAssetNode = an_lookup.get(get_node(NodePath(from_gn_name)).get_meta("hy_asset_node_id", ""), null)
-    if from_an:
-        var from_node_schema: Dictionary = SchemaManager.schema.node_schema[from_an.an_type]
-        next_drop_conn_value_type = from_node_schema["connections"][from_an.connection_list[from_port]].get("value_type", "")
-        popup_menu_root.show_filtered_new_gn_menu(true, next_drop_conn_value_type)
-    else:
-        print_debug("Connect right request: From asset node not found")
-        push_warning("Connect right request: From asset node not found")
-    
-    # Add the new node to a group if dropped point is inside it (plus some margin)
-    var all_groups: Array[GraphFrame] = get_all_groups()
-    var dropped_pos_offset: = global_pos_to_position_offset(dropped_pos)
-    next_drop_is_in_group = null
-    for group in all_groups:
-        var group_rect: = get_pos_offset_rect(group).grow(12)
-        if group_rect.has_point(dropped_pos_offset):
-            next_drop_is_in_group = group
-            break
+    _connect_new_request(true, dropped_local_pos, connection_info)
 
-func _connect_left_request(to_gn_name: StringName, to_port: int, dropped_pos: Vector2) -> void:
-    dropping_new_node_at = dropped_pos
-    next_drop_has_position = true
-    next_drop_has_connection = {
+func _connect_left_request(to_gn_name: StringName, to_port: int, dropped_local_pos: Vector2) -> void:
+    var connection_info: = {
         "to_node": to_gn_name,
         "to_port": to_port,
     }
-    var to_an: HyAssetNode = an_lookup.get(get_node(NodePath(to_gn_name)).get_meta("hy_asset_node_id", ""), null)
-    if to_an:
-        var to_node_schema: Dictionary = SchemaManager.schema.node_schema[to_an.an_type]
-        next_drop_conn_value_type = to_node_schema["output_value_type"]
-        popup_menu_root.show_filtered_new_gn_menu(false, next_drop_conn_value_type)
-    else:
-        print_debug("Connect left request: To asset node not found")
+    _connect_new_request(false, dropped_local_pos, connection_info)
 
-func on_new_node_menu_cancelled() -> void:
-    clear_next_drop()
+func _connect_new_request(is_right: bool, at_local_pos: Vector2, connection_info: Dictionary) -> void:
+    var connecting_from_gn: CustomGraphNode = get_node(NodePath(connection_info["from_node" if is_right else "to_node"]))
+    var asset_node: HyAssetNode = editor.get_gn_main_asset_node(connecting_from_gn)
 
-func clear_next_drop() -> void:
-    dropping_new_node_at = Vector2.ZERO
-    next_drop_has_connection = {}
-    next_drop_has_position = false
-    next_drop_is_in_group = null
-    next_drop_conn_value_type = ""
+    var conn_value_type: String = ""
+    if asset_node.an_type and asset_node.an_type != "Unknown":
+        if is_right:
+            conn_value_type = SchemaManager.schema.get_input_conn_value_type_for_idx(asset_node.an_type, connection_info["from_port"])
+        else:
+            conn_value_type = SchemaManager.schema.get_output_value_type(asset_node.an_type)
 
-func get_new_asset_node(asset_node_type: String, id_prefix: String = "") -> HyAssetNode:
-    return editor.get_new_asset_node(asset_node_type, id_prefix)
+    var at_pos_offset: = local_pos_to_pos_offset(at_local_pos)
+    var cur_drop_info: = {
+        "dropping_in_graph": self,
+        "at_pos_offset": at_pos_offset,
+        "has_position": true,
+        "connection_info": connection_info,
+        "connection_value_type": conn_value_type,
+    }
+    
+    # Add the new node to a group if dropped point is inside it (plus some margin)
+    var all_groups: Array[GraphFrame] = get_all_groups()
+    for group in all_groups:
+        var group_rect: = get_pos_offset_rect(group).grow(8)
+        if group_rect.has_point(at_pos_offset):
+            cur_drop_info["into_group"] = group
+            break
+
+    editor.connect_new_request(cur_drop_info)
+
 
 func get_all_graph_nodes() -> Array[CustomGraphNode]:
     var all_gns: Array[CustomGraphNode] = []
@@ -793,14 +695,14 @@ func _copy_or_cut_ges(ges: Array[GraphElement]) -> void:
     save_copied_nodes_internal_connections()
     save_copied_nodes_an_references()
     copied_from_pos_offset = get_leftmost_pos_offset_of_ges(ges)
-    copied_from_screen_center_pos_offset = global_pos_to_position_offset(get_viewport_rect().size / 2)
+    copied_from_screen_center_pos_offset = get_center_pos_offset()
     in_graph_copy_id = Util.random_str(16)
     sort_all_an_connections()
-    ClipboardManager.send_copied_nodes_to_clipboard(self)
+    #ClipboardManager.send_copied_nodes_to_clipboard(self)
 
 func get_leftmost_pos_offset_of_ges(ges: Array[GraphElement]) -> Vector2:
     if ges.size() == 0:
-        return global_pos_to_position_offset(get_viewport_rect().size / 2)
+        return get_center_pos_offset()
     var leftmost_pos_offset: Vector2 = ges[0].position_offset
     for ge in ges:
         var ge_pos: Vector2 = ge.position_offset
@@ -844,7 +746,7 @@ func _paste_request() -> void:
     var screen_center_pos: = get_viewport_rect().size / 2
     _paste_request_at(screen_center_pos, true)
 
-func _paste_request_at(paste_global_pos: Vector2, paste_screen_relative: bool = false) -> void:
+func _paste_request_at(paste_local_pos: Vector2, paste_screen_relative: bool = false) -> void:
     ClipboardManager.load_copied_nodes_from_clipboard(self)
     
     if clipboard_was_from_external:
@@ -856,7 +758,7 @@ func _paste_request_at(paste_global_pos: Vector2, paste_screen_relative: bool = 
     deselect_all()
     
     var destination_offset: = Vector2.ZERO
-    var paste_pos_offset: = global_pos_to_position_offset(paste_global_pos)
+    var paste_pos_offset: = local_pos_to_pos_offset(paste_local_pos)
     var delta_offset: = paste_pos_offset - copied_from_pos_offset
     if paste_screen_relative:
         delta_offset = paste_pos_offset - copied_from_screen_center_pos_offset
@@ -893,7 +795,7 @@ func _paste_request_at(paste_global_pos: Vector2, paste_screen_relative: bool = 
 func paste_from_external() -> void:
     var old_json_scale: = json_positions_scale
     json_positions_scale = Vector2.ONE
-    var screen_center_pos: Vector2 = global_pos_to_position_offset(get_viewport_rect().size / 2)
+    var screen_center_pos: Vector2 = get_center_pos_offset()
     prints("screen center pos offset: %s" % [screen_center_pos])
     var an_roots: Array[HyAssetNode] = get_an_roots_within_set(copied_external_ans)
     floating_tree_roots.append_array(an_roots)
@@ -979,7 +881,7 @@ func duplicate_graph_element(the_graph_element: GraphElement, allowed_an_list: A
 
 func duplicate_graph_node(gn: CustomGraphNode, allowed_an_list: Array[HyAssetNode] = []) -> CustomGraphNode:
     var duplicate_gn: CustomGraphNode
-    if gn.get_meta("is_special_gn", false):
+    if editor.gn_is_special(gn):
         if not allowed_an_list:
             allowed_an_list = get_gn_own_asset_nodes(gn)
         duplicate_gn = special_gn_factory.make_duplicate_special_gn(gn, allowed_an_list)
@@ -1003,7 +905,7 @@ func init_duplicate_graph_node(duplicate_gn: CustomGraphNode, original_gn: Custo
     duplicate_gn.title = original_gn.title
     duplicate_gn.name = get_duplicate_gn_name(original_gn.name)
 
-    #if not duplicate_gn.get_meta("is_special_gn", false) and duplicate_gn.get_meta("hy_asset_node_id", ""):
+    #if not editor.gn_is_special(duplicate_gn) and duplicate_gn.get_meta("hy_asset_node_id", ""):
         #setup_synchers_for_duplicate_graph_node(duplicate_gn)
 
 func _duplicate_synced_graph_node(gn: CustomGraphNode, old_an: HyAssetNode) -> CustomGraphNode:
@@ -1068,27 +970,6 @@ func register_tree_result_ans(tree_result: CHANE_HyAssetNodeSerializer.TreeParse
     for an in tree_result.all_nodes:
         _register_asset_node(an)
 
-func collect_node_positions_old_style_recursive(cur_node_data: Dictionary) -> void:
-    if not cur_node_data.has("$NodeId"):
-        print_debug("Old style node does not have a $NodeID, exiting branch")
-        return
-    var cur_node_meta: = {}
-    if cur_node_data.has("$Position"):
-        cur_node_meta["$Position"] = cur_node_data["$Position"]
-    if cur_node_data.has("$Title"):
-        cur_node_meta["$Title"] = cur_node_data["$Title"]
-    asset_node_meta[cur_node_data["$NodeId"]] = cur_node_meta
-    
-    for key in cur_node_data.keys():
-        if key.begins_with("$") or typeof(cur_node_data[key]) not in [TYPE_DICTIONARY, TYPE_ARRAY]:
-            continue
-        if typeof(cur_node_data[key]) == TYPE_DICTIONARY:
-            if cur_node_data[key].get("$NodeId", ""):
-                collect_node_positions_old_style_recursive(cur_node_data[key])
-        elif cur_node_data[key].size() > 0 and typeof(cur_node_data[key][0]) == TYPE_DICTIONARY and cur_node_data[key][0].get("$NodeId", ""):
-            for i in cur_node_data[key].size():
-                collect_node_positions_old_style_recursive(cur_node_data[key][i])
-
 
 func make_json_groups(group_datas: Array[Dictionary]) -> void:
     for group_data in group_datas:
@@ -1118,21 +999,6 @@ func make_and_position_graph_nodes_for_trees(an_roots: Array[HyAssetNode], from_
         if not from_loaded:
             snap_ges(new_graph_nodes)
     return all_added_gns
-
-func make_and_add_graph_node(asset_node: HyAssetNode, at_global_pos: Vector2, centered: bool = false, snap_now: bool = false) -> CustomGraphNode:
-    var at_pos_offset: = global_pos_to_position_offset(at_global_pos)
-    editor.asset_node_aux_data[asset_node.an_node_id].position = at_pos_offset
-    var new_gn: CustomGraphNode = graph_node_factory.make_new_graph_node_for_asset_node(asset_node, true, at_pos_offset, centered)
-    add_graph_node_child(new_gn)
-    if snap_now:
-        snap_ge(new_gn)
-    return new_gn
-
-func global_pos_to_position_offset(the_global_pos: Vector2) -> Vector2:
-    return (scroll_offset + the_global_pos) / zoom
-
-func position_offset_to_global_pos(the_position_offset: Vector2) -> Vector2:
-    return (the_position_offset * zoom) - scroll_offset
     
 func connect_children(graph_node: CustomGraphNode) -> void:
     var connection_names: Array[String] = get_graph_connections_for(graph_node)
@@ -1177,7 +1043,7 @@ func _recursive_new_graph_nodes(at_asset_node: HyAssetNode, root_asset_node: HyA
     var new_graph_nodes: Array[CustomGraphNode] = []
 
     var aux: = editor.asset_node_aux_data[at_asset_node.an_node_id]
-    var this_gn: = graph_node_factory.make_new_graph_node_for_asset_node(at_asset_node, false, aux.position)
+    var this_gn: = editor.make_new_graph_node_for_an(at_asset_node, aux.position)
     new_graph_nodes.append(this_gn)
 
     for conn_name in get_graph_connections_for(this_gn):
@@ -1187,21 +1053,21 @@ func _recursive_new_graph_nodes(at_asset_node: HyAssetNode, root_asset_node: HyA
     return new_graph_nodes
 
 func get_graph_connections_for(graph_node: CustomGraphNode) -> Array[String]:
-    if graph_node.get_meta("is_special_gn", false):
+    if editor.gn_is_special(graph_node):
         return graph_node.get_current_connection_list()
     else:
         var asset_node: = editor.get_gn_main_asset_node(graph_node)
         return asset_node.connection_list
 
 func get_graph_connected_asset_nodes(graph_node: CustomGraphNode, conn_name: String) -> Array[HyAssetNode]:
-    if graph_node.get_meta("is_special_gn", false):
+    if editor.gn_is_special(graph_node):
         return graph_node.filter_child_connection_nodes(conn_name)
     else:
         var asset_node: = editor.get_gn_main_asset_node(graph_node)
         return asset_node.get_all_connected_nodes(conn_name)
 
 func get_gn_own_asset_nodes(graph_node: CustomGraphNode, extra_asset_nodes: Array[HyAssetNode] = []) -> Array[HyAssetNode]:
-    if graph_node.get_meta("is_special_gn", false):
+    if editor.gn_is_special(graph_node):
         return graph_node.get_own_asset_nodes()
     else:
         return [safe_get_an_from_gn(graph_node, extra_asset_nodes)]
@@ -1231,10 +1097,6 @@ func get_graph_connected_graph_nodes(graph_node: CustomGraphNode, conn_name: Str
     for connected_asset_node in connected_asset_nodes:
         connected_graph_nodes.append(editor.gn_lookup[connected_asset_node.an_node_id])
     return connected_graph_nodes
-
-
-func should_be_special_gn(asset_node: HyAssetNode) -> bool:
-    return special_gn_factory.types_with_special_nodes.has(asset_node.an_type)
 
 func get_child_node_of_class(parent: Node, class_names: Array[String]) -> Node:
     if parent.get_class() in class_names:
@@ -1399,7 +1261,7 @@ func handle_mouse_event(event: InputEventMouse) -> void:
             scroll_offset -= mouse_motion_event.relative
 
 func check_for_group_context_menu_click_start(mouse_btn_event: InputEventMouseButton) -> void:
-    var mouse_pos_offset: = global_pos_to_position_offset(mouse_btn_event.global_position)
+    var mouse_pos_offset: = local_pos_to_pos_offset(mouse_btn_event.position)
     for group in get_all_groups():
         var group_rect: = get_pos_offset_rect(group)
         if group_rect.has_point(mouse_pos_offset):
@@ -1636,6 +1498,19 @@ func _set_offsets_and_group_sizes(ge_positions: Dictionary[GraphElement, Vector2
         # This forces the native graph edit code to resize the graph frame inclusing covering group members and autoshrikning if enabled
         # it will still do this without emitting the signal but it will blink out of existence for a frame
         group.autoshrink_changed.emit(group.size)
+
+func undo_redo_set_offsets_and_sizes(move_ges: Dictionary[GraphElement, Vector2], resize_ges: Dictionary[GraphElement, Vector2]) -> void:
+    _set_ges_offsets(move_ges)
+    #var sorted_for_resize: = _sort_groups_by_heirarchy_reversed(group_sizes.keys())
+    for resized_ge in resize_ges.keys():
+        resized_ge.size = resize_ges[resized_ge]
+
+    for ge: GraphElement in resize_ges.keys():
+        if not ge is GraphFrame:
+            continue
+        # This forces the native graph edit code to resize the graph frame inclusing covering group members and autoshrikning if enabled
+        # it will still do this without emitting the signal but it will blink out of existence for a frame
+        ge.autoshrink_changed.emit(ge.size)
 
 func _sort_groups_by_heirarchy_reversed(group_list: Array) -> Array[GraphFrame]:
     var group_to_parent: = get_graph_elements_cur_groups(Array(group_list, TYPE_OBJECT, &"GraphElement", null))
@@ -2018,54 +1893,17 @@ func _undo_redo_remove_ge(the_graph_element: GraphElement) -> void:
         remove_asset_node(the_asset_node)
     remove_graph_element_child(the_graph_element)
 
+func undo_redo_add_ges(the_ges: Array[GraphElement]) -> void:
+    for adding_ge in the_ges:
+        add_graph_element_child(adding_ge)
+
+func undo_redo_remove_ges(the_ges: Array[GraphElement]) -> void:
+    for removing_ge in the_ges:
+        remove_graph_element_child(removing_ge)
+
 func sort_all_an_connections() -> void:
     for an in all_asset_nodes:
         an.sort_connections_by_gn_pos(editor.gn_lookup)
-
-func on_new_node_type_picked(node_type: String) -> void:
-    var new_an: HyAssetNode = get_new_asset_node(node_type)
-    var new_gn: CustomGraphNode = null
-    if next_drop_has_connection:
-        if next_drop_has_connection.has("from_node"):
-            new_gn = make_and_add_graph_node(new_an, dropping_new_node_at)
-            new_gn.position_offset += output_port_drop_offset
-            next_drop_has_connection["to_node"] = new_gn.name
-            next_drop_has_connection["to_port"] = 0
-        else:
-            new_gn = make_and_add_graph_node(new_an, dropping_new_node_at)
-            new_gn.position_offset.x -= new_gn.size.x
-
-            next_drop_has_connection["from_node"] = new_gn.name
-            var new_an_schema: Dictionary = SchemaManager.schema.node_schema[new_an.an_type]
-            var input_conn_index: int = -1
-            var conn_names: Array = new_an_schema.get("connections", {}).keys()
-            for conn_idx in conn_names.size():
-                if new_an_schema["connections"][conn_names[conn_idx]].get("value_type", "") == next_drop_conn_value_type:
-                    input_conn_index = conn_idx
-                    break
-            if input_conn_index == -1:
-                print_debug("New node type picked: No input connection found for value type: %s" % next_drop_conn_value_type)
-                input_conn_index = 0
-
-            next_drop_has_connection["from_port"] = input_conn_index
-            new_gn.position_offset += input_port_drop_first_offset + (input_port_drop_additional_offset * input_conn_index)
-        
-        snap_ge(new_gn)
-        cur_connection_added_ges.append(new_gn)
-        if next_drop_is_in_group:
-            add_ge_to_group(new_gn, next_drop_is_in_group, true)
-        add_connection(next_drop_has_connection)
-    else:
-        var at_global_pos: = dropping_new_node_at
-        if not next_drop_has_position:
-            at_global_pos = get_viewport().get_visible_rect().size / 2
-        new_gn = make_and_add_graph_node(new_an, at_global_pos)
-        new_gn.position_offset -= new_gn.size / 2
-        snap_ge(new_gn)
-        if next_drop_is_in_group:
-            add_ge_to_group(new_gn, next_drop_is_in_group, true)
-        create_add_new_ge_undo_step(new_gn)
-
     
 func get_dissolve_info(graph_node: GraphNode) -> Dictionary:
     var in_ports_connected: Array[int] = []
@@ -2275,18 +2113,18 @@ func actually_right_click_gn(graph_node: CustomGraphNode) -> void:
 
     context_menu.name = "NodeContextMenu"
     
-    context_menu.add_item("Edit Title", ContextMenuItems.EDIT_TITLE)
+    context_menu.add_item("Edit Title", CHANE_AssetNodeEditor.ContextMenuItems.EDIT_TITLE)
     context_menu.add_separator()
     
     set_context_menu_common_options(context_menu)
     
     if is_asset_node:
-        context_menu.add_item("Dissolve Node", ContextMenuItems.DISSOLVE_NODES)
+        context_menu.add_item("Dissolve Node", CHANE_AssetNodeEditor.ContextMenuItems.DISSOLVE_NODES)
         if not can_dissolve_gn(graph_node):
-            var dissolve_idx: int = context_menu.get_item_index(ContextMenuItems.DISSOLVE_NODES)
+            var dissolve_idx: int = context_menu.get_item_index(CHANE_AssetNodeEditor.ContextMenuItems.DISSOLVE_NODES)
             context_menu.set_item_disabled(dissolve_idx, true)
         
-        context_menu.add_item("Cut All Connections", ContextMenuItems.BREAK_CONNECTIONS)
+        context_menu.add_item("Cut All Connections", CHANE_AssetNodeEditor.ContextMenuItems.BREAK_CONNECTIONS)
     
     context_menu.add_separator()
     set_context_menu_select_options(context_menu, true, false)
@@ -2294,7 +2132,7 @@ func actually_right_click_gn(graph_node: CustomGraphNode) -> void:
     add_child(context_menu, true)
 
     context_menu.position = get_popup_pos_at_mouse()
-    context_menu_pos_offset = global_pos_to_position_offset(get_global_mouse_position())
+    context_menu_pos_offset = get_mouse_pos_offset()
     context_menu.popup()
 
 func actually_right_click_group(group: GraphFrame) -> void:
@@ -2306,15 +2144,15 @@ func actually_right_click_group(group: GraphFrame) -> void:
     context_menu.id_pressed.connect(on_node_context_menu_id_pressed.bind(group))
     context_menu.name = "GroupContextMenu"
     
-    context_menu.add_item("Edit Group Title", ContextMenuItems.EDIT_GROUP_TITLE)
+    context_menu.add_item("Edit Group Title", CHANE_AssetNodeEditor.ContextMenuItems.EDIT_GROUP_TITLE)
     var change_group_color_submenu: PopupMenu = get_color_name_menu()
     change_group_color_submenu.index_pressed.connect(on_change_group_color_name_index_pressed.bind(change_group_color_submenu, group))
-    context_menu.add_submenu_node_item("Change Group Accent Color", change_group_color_submenu, ContextMenuItems.CHANGE_GROUP_COLOR)
+    context_menu.add_submenu_node_item("Change Group Accent Color", change_group_color_submenu, CHANE_AssetNodeEditor.ContextMenuItems.CHANGE_GROUP_COLOR)
 
     context_menu.add_separator()
     
     set_context_menu_new_node_options(context_menu)
-    var new_group_idx: int = context_menu.get_item_index(ContextMenuItems.CREATE_NEW_GROUP)
+    var new_group_idx: int = context_menu.get_item_index(CHANE_AssetNodeEditor.ContextMenuItems.CREATE_NEW_GROUP)
     context_menu.set_item_text(new_group_idx, "Create New Inner Group")
     context_menu.add_separator()
     
@@ -2327,17 +2165,17 @@ func actually_right_click_group(group: GraphFrame) -> void:
     if not multiple_groups_selected:
         var is_shrinkwrap_enabled: bool = group.autoshrink_enabled
         if is_shrinkwrap_enabled:
-            context_menu.add_item("Disable Shrinkwrap", ContextMenuItems.SET_GROUP_NO_SHRINKWRAP)
+            context_menu.add_item("Disable Shrinkwrap", CHANE_AssetNodeEditor.ContextMenuItems.SET_GROUP_NO_SHRINKWRAP)
         else:
-            context_menu.add_item("Enable Shrinkwrap", ContextMenuItems.SET_GROUP_SHRINKWRAP)
+            context_menu.add_item("Enable Shrinkwrap", CHANE_AssetNodeEditor.ContextMenuItems.SET_GROUP_SHRINKWRAP)
     else:
-        context_menu.add_item("Enable Shrinkwrap for Selected Groups", ContextMenuItems.SET_GROUP_SHRINKWRAP)
-        context_menu.add_item("Disable Shrinkwrap for Selected Groups", ContextMenuItems.SET_GROUP_NO_SHRINKWRAP)
+        context_menu.add_item("Enable Shrinkwrap for Selected Groups", CHANE_AssetNodeEditor.ContextMenuItems.SET_GROUP_SHRINKWRAP)
+        context_menu.add_item("Disable Shrinkwrap for Selected Groups", CHANE_AssetNodeEditor.ContextMenuItems.SET_GROUP_NO_SHRINKWRAP)
     
     add_child(context_menu, true)
     
     context_menu.position = get_popup_pos_at_mouse()
-    context_menu_pos_offset = global_pos_to_position_offset(get_global_mouse_position())
+    context_menu_pos_offset = get_mouse_pos_offset()
     context_menu.popup()
 
 func actually_right_click_nothing() -> void:
@@ -2347,16 +2185,16 @@ func actually_right_click_nothing() -> void:
     context_menu.name = "NothingContextMenu"
     
     if not loaded:
-        context_menu.add_item("New File", ContextMenuItems.NEW_FILE)
+        context_menu.add_item("New File", CHANE_AssetNodeEditor.ContextMenuItems.NEW_FILE)
         return
     
     set_context_menu_new_node_options(context_menu)
     context_menu.add_separator()
     
     var paste_plural_s: = "s" if copied_nodes.size() > 1 else ""
-    context_menu.add_item("Paste Nodes" + paste_plural_s, ContextMenuItems.PASTE_NODES)
+    context_menu.add_item("Paste Nodes" + paste_plural_s, CHANE_AssetNodeEditor.ContextMenuItems.PASTE_NODES)
     if not check_if_can_paste():
-        var paste_idx: int = context_menu.get_item_index(ContextMenuItems.PASTE_NODES)
+        var paste_idx: int = context_menu.get_item_index(CHANE_AssetNodeEditor.ContextMenuItems.PASTE_NODES)
         context_menu.set_item_disabled(paste_idx, true)
     
     add_child(context_menu, true)
@@ -2365,7 +2203,7 @@ func actually_right_click_nothing() -> void:
     set_context_menu_select_options(context_menu, false, false)
     
     context_menu.position = get_popup_pos_at_mouse()
-    context_menu_pos_offset = global_pos_to_position_offset(get_global_mouse_position())
+    context_menu_pos_offset = get_mouse_pos_offset()
     context_menu.popup()
 
 func set_context_menu_common_options(context_menu: PopupMenu) -> void:
@@ -2376,46 +2214,46 @@ func set_context_menu_common_options(context_menu: PopupMenu) -> void:
     var num_selected_groups: int = get_selected_groups().size()
     var plural_s: = "s" if multiple_selected else ""
 
-    context_menu.add_item("Copy Node" + plural_s, ContextMenuItems.COPY_NODES)
-    context_menu.add_item("Cut Node" + plural_s, ContextMenuItems.CUT_NODES)
+    context_menu.add_item("Copy Node" + plural_s, CHANE_AssetNodeEditor.ContextMenuItems.COPY_NODES)
+    context_menu.add_item("Cut Node" + plural_s, CHANE_AssetNodeEditor.ContextMenuItems.CUT_NODES)
 
     
     var paste_plural_s: = "s" if copied_nodes.size() > 1 else ""
-    context_menu.add_item("Paste Node" + paste_plural_s, ContextMenuItems.PASTE_NODES)
+    context_menu.add_item("Paste Node" + paste_plural_s, CHANE_AssetNodeEditor.ContextMenuItems.PASTE_NODES)
     if not check_if_can_paste():
-        var paste_idx: int = context_menu.get_item_index(ContextMenuItems.PASTE_NODES)
+        var paste_idx: int = context_menu.get_item_index(CHANE_AssetNodeEditor.ContextMenuItems.PASTE_NODES)
         context_menu.set_item_disabled(paste_idx, true)
 
-    context_menu.add_item("Delete Node" + plural_s, ContextMenuItems.DELETE_NODES)
+    context_menu.add_item("Delete Node" + plural_s, CHANE_AssetNodeEditor.ContextMenuItems.DELETE_NODES)
     if not multiple_selected and not can_delete_ge(selected_nodes[0]):
-        var delete_idx: int = context_menu.get_item_index(ContextMenuItems.DELETE_NODES)
+        var delete_idx: int = context_menu.get_item_index(CHANE_AssetNodeEditor.ContextMenuItems.DELETE_NODES)
         context_menu.set_item_disabled(delete_idx, true)
     
     if num_selected_groups > 0:
-        context_menu.add_item("Delete Nodes (Including All Inside Selected Groups)", ContextMenuItems.DELETE_NODES_DEEP)
-        context_menu.add_item("Remove Selected Groups (Keeping Nodes Inside)", ContextMenuItems.DELETE_GROUPS_ONLY)
+        context_menu.add_item("Delete Nodes (Including All Inside Selected Groups)", CHANE_AssetNodeEditor.ContextMenuItems.DELETE_NODES_DEEP)
+        context_menu.add_item("Remove Selected Groups (Keeping Nodes Inside)", CHANE_AssetNodeEditor.ContextMenuItems.DELETE_GROUPS_ONLY)
     
-    context_menu.add_item("Duplicate Node" + plural_s, ContextMenuItems.DUPLICATE_NODES)
+    context_menu.add_item("Duplicate Node" + plural_s, CHANE_AssetNodeEditor.ContextMenuItems.DUPLICATE_NODES)
 
 func set_context_menu_select_options(context_menu: PopupMenu, over_graph_node: bool, over_group: bool) -> void:
-    context_menu.add_item("Select All", ContextMenuItems.SELECT_ALL)
-    context_menu.add_item("Deselect All", ContextMenuItems.DESELECT_ALL)
-    context_menu.add_item("Invert Selection", ContextMenuItems.INVERT_SELECTION)
+    context_menu.add_item("Select All", CHANE_AssetNodeEditor.ContextMenuItems.SELECT_ALL)
+    context_menu.add_item("Deselect All", CHANE_AssetNodeEditor.ContextMenuItems.DESELECT_ALL)
+    context_menu.add_item("Invert Selection", CHANE_AssetNodeEditor.ContextMenuItems.INVERT_SELECTION)
     
     if over_graph_node:
-        context_menu.add_item("Select Subtree", ContextMenuItems.SELECT_SUBTREE)
-        context_menu.add_item("Select Subtree (Greedy)", ContextMenuItems.SELECT_SUBTREE_GREEDY)
+        context_menu.add_item("Select Subtree", CHANE_AssetNodeEditor.ContextMenuItems.SELECT_SUBTREE)
+        context_menu.add_item("Select Subtree (Greedy)", CHANE_AssetNodeEditor.ContextMenuItems.SELECT_SUBTREE_GREEDY)
     
     var num_selected_groups: int = get_selected_groups().size()
     if num_selected_groups > 0:
         if over_group:
-            context_menu.add_item("Select All Nodes In This Group", ContextMenuItems.SELECT_GROUP_NODES)
+            context_menu.add_item("Select All Nodes In This Group", CHANE_AssetNodeEditor.ContextMenuItems.SELECT_GROUP_NODES)
         if not over_group or num_selected_groups > 1:
-            context_menu.add_item("Select All Nodes In Selected Groups", ContextMenuItems.SELECT_GROUPS_NODES)
+            context_menu.add_item("Select All Nodes In Selected Groups", CHANE_AssetNodeEditor.ContextMenuItems.SELECT_GROUPS_NODES)
 
 func set_context_menu_new_node_options(context_menu: PopupMenu) -> void:
-    context_menu.add_item("Create New Node", ContextMenuItems.CREATE_NEW_NODE)
-    context_menu.add_item("Create New Group", ContextMenuItems.CREATE_NEW_GROUP)
+    context_menu.add_item("Create New Node", CHANE_AssetNodeEditor.ContextMenuItems.CREATE_NEW_NODE)
+    context_menu.add_item("Create New Group", CHANE_AssetNodeEditor.ContextMenuItems.CREATE_NEW_GROUP)
 
 func check_if_can_paste() -> bool:
     if copied_nodes.size() > 0:
@@ -2424,78 +2262,78 @@ func check_if_can_paste() -> bool:
         return true
     return false
 
-func on_node_context_menu_id_pressed(node_context_menu_id: ContextMenuItems, on_ge: GraphElement) -> void:
+func on_node_context_menu_id_pressed(node_context_menu_id: CHANE_AssetNodeEditor.ContextMenuItems, on_ge: GraphElement) -> void:
     var is_graph_node: bool = on_ge and on_ge is CustomGraphNode
     var is_group: bool = on_ge and on_ge is GraphFrame
 
     match node_context_menu_id:
-        ContextMenuItems.COPY_NODES:
+        CHANE_AssetNodeEditor.ContextMenuItems.COPY_NODES:
             _copy_request()
-        ContextMenuItems.CUT_NODES:
+        CHANE_AssetNodeEditor.ContextMenuItems.CUT_NODES:
             _cut_request()
-        ContextMenuItems.CUT_NODES_DEEP:
+        CHANE_AssetNodeEditor.ContextMenuItems.CUT_NODES_DEEP:
             cut_selected_nodes_inclusive()
-        ContextMenuItems.PASTE_NODES:
+        CHANE_AssetNodeEditor.ContextMenuItems.PASTE_NODES:
             _paste_request()
-        ContextMenuItems.DELETE_NODES:
+        CHANE_AssetNodeEditor.ContextMenuItems.DELETE_NODES:
             _delete_request_refs(get_selected_ges())
-        ContextMenuItems.DELETE_NODES_DEEP:
+        CHANE_AssetNodeEditor.ContextMenuItems.DELETE_NODES_DEEP:
             delete_selected_nodes_inclusive()
-        ContextMenuItems.DELETE_GROUPS_ONLY:
+        CHANE_AssetNodeEditor.ContextMenuItems.DELETE_GROUPS_ONLY:
             var selected_groups: = get_selected_groups()
             remove_groups_only_with_undo(selected_groups)
-        ContextMenuItems.DISSOLVE_NODES:
+        CHANE_AssetNodeEditor.ContextMenuItems.DISSOLVE_NODES:
             if is_graph_node:
                 dissolve_gn_with_undo(on_ge)
-        ContextMenuItems.BREAK_CONNECTIONS:
+        CHANE_AssetNodeEditor.ContextMenuItems.BREAK_CONNECTIONS:
             if is_graph_node:
                 cut_all_connections_with_undo(on_ge)
-        ContextMenuItems.DUPLICATE_NODES:
+        CHANE_AssetNodeEditor.ContextMenuItems.DUPLICATE_NODES:
             duplicate_selected_ges()
         
-        ContextMenuItems.EDIT_TITLE:
+        CHANE_AssetNodeEditor.ContextMenuItems.EDIT_TITLE:
             if is_graph_node:
                 open_gn_title_edit(on_ge)
-        ContextMenuItems.EDIT_GROUP_TITLE:
+        CHANE_AssetNodeEditor.ContextMenuItems.EDIT_GROUP_TITLE:
             if is_group:
                 open_group_title_edit(on_ge)
         
-        ContextMenuItems.SELECT_SUBTREE:
+        CHANE_AssetNodeEditor.ContextMenuItems.SELECT_SUBTREE:
             if is_graph_node:
                 select_subtree(on_ge, false)
-        ContextMenuItems.SELECT_SUBTREE_GREEDY:
+        CHANE_AssetNodeEditor.ContextMenuItems.SELECT_SUBTREE_GREEDY:
             if is_graph_node:
                 select_subtree(on_ge, true)
-        ContextMenuItems.SELECT_GROUP_NODES:
+        CHANE_AssetNodeEditor.ContextMenuItems.SELECT_GROUP_NODES:
             if is_group:
                 deselect_all()
                 select_nodes_in_group(on_ge)
-        ContextMenuItems.SELECT_GROUPS_NODES:
+        CHANE_AssetNodeEditor.ContextMenuItems.SELECT_GROUPS_NODES:
             var selected_groups: Array[GraphFrame] = get_selected_groups()
             deselect_all()
             for group in selected_groups:
                 select_nodes_in_group(group)
-        ContextMenuItems.SELECT_ALL:
+        CHANE_AssetNodeEditor.ContextMenuItems.SELECT_ALL:
             select_all()
-        ContextMenuItems.DESELECT_ALL:
+        CHANE_AssetNodeEditor.ContextMenuItems.DESELECT_ALL:
             deselect_all()
-        ContextMenuItems.INVERT_SELECTION:
+        CHANE_AssetNodeEditor.ContextMenuItems.INVERT_SELECTION:
             invert_selection()
         
-        ContextMenuItems.SET_GROUP_SHRINKWRAP:
+        CHANE_AssetNodeEditor.ContextMenuItems.SET_GROUP_SHRINKWRAP:
             var selected_groups: Array[GraphFrame] = get_selected_groups()
             set_groups_shrinkwrap_with_undo(selected_groups, true)
-        ContextMenuItems.SET_GROUP_NO_SHRINKWRAP:
+        CHANE_AssetNodeEditor.ContextMenuItems.SET_GROUP_NO_SHRINKWRAP:
             var selected_groups: Array[GraphFrame] = get_selected_groups()
             set_groups_shrinkwrap_with_undo(selected_groups, false)
-        ContextMenuItems.CREATE_NEW_NODE:
+        CHANE_AssetNodeEditor.ContextMenuItems.CREATE_NEW_NODE:
             var into_group: = on_ge if is_group else null
-            show_new_node_menu_for_pos(context_menu_pos_offset, into_group)
-        ContextMenuItems.CREATE_NEW_GROUP:
+            editor.show_new_node_menu_for_pos(context_menu_pos_offset, self, into_group)
+        CHANE_AssetNodeEditor.ContextMenuItems.CREATE_NEW_GROUP:
             var into_group: = on_ge if is_group else null
             add_new_group_pending_title_undo_step(context_menu_pos_offset, into_group)
         
-        ContextMenuItems.NEW_FILE:
+        CHANE_AssetNodeEditor.ContextMenuItems.NEW_FILE:
             popup_menu_root.show_new_file_type_chooser()
 
 func on_change_group_color_name_index_pressed(index: int, color_name_menu: PopupMenu, group: GraphFrame) -> void:
@@ -2596,20 +2434,16 @@ func raw_connections(graph_node: CustomGraphNode) -> Array[Dictionary]:
     return get_connection_list_from_node(graph_node.name)
 
 func raw_out_connections(graph_node: CustomGraphNode) -> Array[Dictionary]:
-    var raw_gn_connections: = raw_connections(graph_node)
-    var out_conn_infos: Array[Dictionary] = []
-    for conn_info in raw_gn_connections:
-        if conn_info["to_node"] == graph_node.name:
-            out_conn_infos.append(conn_info)
-    return out_conn_infos
+    return Util.out_connections(raw_connections(graph_node), graph_node.name)
 
 func raw_in_connections(graph_node: CustomGraphNode) -> Array[Dictionary]:
-    var raw_gn_connections: = raw_connections(graph_node)
-    var in_conn_infos: Array[Dictionary] = []
-    for conn_info in raw_gn_connections:
-        if conn_info["from_node"] == graph_node.name:
-            in_conn_infos.append(conn_info)
-    return in_conn_infos
+    return Util.in_connections(raw_connections(graph_node), graph_node.name)
+
+func typed_conn_infos_for_gn(graph_node: CustomGraphNode) -> Array[Dictionary]:
+    var conn_infos: = raw_connections(graph_node)
+    for i in conn_infos.size():
+        conn_infos[i]["value_type"] = get_type_of_conn_info(conn_infos[i])
+    return conn_infos
 
 func can_delete_gn(graph_node: CustomGraphNode) -> bool:
     if graph_node == editor.root_graph_node:
@@ -2656,7 +2490,7 @@ func _get_deserialized_group(group_data: Dictionary, use_json_pos_scale: bool, r
     serializer.serialized_pos_scale = json_positions_scale if use_json_pos_scale else Vector2.ONE
     serializer.serialized_pos_offset = relative_root_position
     if relative_to_screen_center:
-        serializer.serialized_pos_offset = global_pos_to_position_offset(get_viewport().get_visible_rect().size / 2)
+        serializer.serialized_pos_offset = local_pos_to_pos_offset(get_viewport().get_visible_rect().size / 2)
     return serializer.deserialize_group(group_data)
             
 func deserialize_and_add_group(group_data: Dictionary, use_json_pos_scale: bool, relative_to_screen_center: bool) -> GraphFrame:
@@ -2833,14 +2667,19 @@ func get_pos_offset_rect(graph_element: GraphElement) -> Rect2:
 func get_popup_pos_at_mouse() -> Vector2i:
     return Util.get_popup_window_pos(get_global_mouse_position())
 
-func add_graph_element_child(graph_element: GraphElement) -> void:
+func add_graph_element_child(graph_element: GraphElement, with_snap: bool = false) -> void:
     if graph_element is CustomGraphNode:
-        add_graph_node_child(graph_element)
+        add_graph_node_child(graph_element, with_snap)
     else:
         add_child(graph_element, true)
+        if with_snap:
+            snap_ge(graph_element)
 
-func add_graph_node_child(graph_node: CustomGraphNode) -> void:
+func add_graph_node_child(graph_node: CustomGraphNode, with_snap: bool = false) -> void:
     add_child(graph_node, true)
+    if with_snap:
+        snap_ge(graph_node)
+
     var an_id: String = graph_node.get_meta("hy_asset_node_id", "")
     if an_id:
         editor.gn_lookup[an_id] = graph_node
@@ -2860,3 +2699,22 @@ func remove_graph_element_child(graph_element: GraphElement) -> void:
         remove_graph_node_child(graph_element)
     else:
         remove_child(graph_element)
+
+## Get's the position_offset coordinate under the mouse cursor's current position
+func get_mouse_pos_offset() -> Vector2:
+    return local_pos_to_pos_offset(get_local_mouse_position())
+
+## Get's the position_offset coordinate at the center of the graph edit's current view into the graph
+func get_center_pos_offset() -> Vector2:
+    return local_pos_to_pos_offset(size / 2)
+
+## Get's the position_offset coordinate that coincides with a given global (godot 2d space) position
+func global_pos_to_pos_offset(the_global_pos: Vector2) -> Vector2:
+    var local_pos: = get_global_transform().affine_inverse() * the_global_pos
+    return local_pos_to_pos_offset(local_pos)
+
+func local_pos_to_pos_offset(the_pos: Vector2) -> Vector2:
+    return (scroll_offset + the_pos) / zoom
+
+func position_offset_to_global_pos(the_position_offset: Vector2) -> Vector2:
+    return (the_position_offset * zoom) - scroll_offset

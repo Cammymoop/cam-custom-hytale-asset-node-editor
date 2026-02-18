@@ -99,6 +99,33 @@ func resolve_asset_node_type(type_key: String, output_value_type: String, node_i
 func infer_asset_node_type_from_id(node_id: String) -> String:
     return _unknown_output_type_inference(node_id)
 
+func get_input_conn_idx_for_name(node_type: String, conn_name: String) -> int:
+    assert(node_type in node_schema, "Node type %s not found in node schema" % node_type)
+    return node_schema[node_type].get("connections", {}).keys().find(conn_name)
+
+func get_input_conn_name_for_idx(node_type: String, conn_idx: int) -> String:
+    assert(node_type in node_schema, "Node type %s not found in node schema" % node_type)
+    var conn_names: Array = node_schema[node_type].get("connections", {}).keys()
+    if conn_idx < 0 or conn_idx >= conn_names.size():
+        return ""
+    return conn_names[conn_idx]
+
+func get_input_conn_value_types_list(node_type: String) -> Array[String]:
+    assert(node_type in node_schema, "Node type %s not found in node schema" % node_type)
+    var connections: = node_schema[node_type].get("connections", {}).values() as Array
+    var conn_value_types: Array[String] = []
+    for conn in connections:
+        conn_value_types.append(conn["value_type"])
+    return conn_value_types
+
+func get_num_output_connections(node_type: String) -> int:
+    assert(node_type in node_schema, "Node type %s not found in node schema" % node_type)
+    return 0 if node_schema[node_type].get("no_output", false) else 1
+
+func get_num_input_connections(node_type: String) -> int:
+    assert(node_type in node_schema, "Node type %s not found in node schema" % node_type)
+    return node_schema[node_type].get("connections", {}).size()
+
 ## Needed for floating node roots in the current format
 func _unknown_output_type_inference(node_id: String) -> String:
     if not full_id_prefix_lookup:

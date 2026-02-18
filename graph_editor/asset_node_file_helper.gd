@@ -1,6 +1,7 @@
 extends Node
 
-signal finished_saving
+signal after_loaded
+signal after_saved
 
 var loaded_file_has_no_positions: = false
 
@@ -9,6 +10,11 @@ var cur_file_path: = ""
 var has_saved_to_cur_file: = false
 
 var has_unsaved_changes: = false
+
+var file_history_version: int = 0
+
+func has_cur_file() -> bool:
+    return cur_file_name != ""
 
 func editing_new_file() -> void:
     cur_file_name = ""
@@ -37,7 +43,7 @@ func _normal_save(file_data: String, file_path: String) -> void:
     has_saved_to_cur_file = true
     GlobalToaster.show_toast_message("Saved")
     has_unsaved_changes = false
-    finished_saving.emit()
+    after_saved.emit()
 
 func _save_to_json_file(file_data: String, file_path: String) -> void:
     var file: = FileAccess.open(file_path, FileAccess.WRITE)
@@ -74,3 +80,4 @@ func _load_from_json_file(json_file_path: String, loaded_callback: Callable) -> 
         push_error("JSON data is not a dictionary")
         return
     loaded_callback.call(parsed_json_data)
+    after_loaded.emit()

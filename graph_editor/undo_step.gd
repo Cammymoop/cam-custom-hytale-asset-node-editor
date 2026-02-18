@@ -1,0 +1,90 @@
+## A class to hold all information needed to undo/redo actions in the Asset Node Editor
+extends RefCounted
+
+const GraphUndoStep = preload("res://graph_editor/graph_undo_step.gd")
+
+var editor: CHANE_AssetNodeEditor
+
+## For each affected graph, store the graph specific information here
+var graph_undo_steps: Dictionary[CHANE_AssetNodeGraphEdit, GraphUndoStep] = {}
+
+var created_asset_nodes: Array[HyAssetNode] = []
+var deleted_asset_nodes: Array[HyAssetNode] = []
+
+var an_settings_changed: Dictionary[String, Dictionary] = {}
+
+var has_existing_action: bool = false
+
+var action_name: String = "Action"
+
+func set_editor(the_editor: CHANE_AssetNodeEditor) -> void:
+    editor = the_editor
+
+func get_history_text() -> String:
+    return action_name
+
+func add_graph_undo(graph: CHANE_AssetNodeGraphEdit, undo_step: GraphUndoStep) -> void:
+    graph_undo_steps[graph] = undo_step
+
+func get_undo_for_graph(graph: CHANE_AssetNodeGraphEdit) -> GraphUndoStep:
+    if not graph_undo_steps.has(graph):
+        graph_undo_steps[graph] = GraphUndoStep.new()
+    return graph_undo_steps[graph]
+
+func register_an_settings_before_change(an_id: String, settings: Dictionary) -> void:
+    var setting_change_info: Dictionary[String, Dictionary] = {}
+    for setting_name in settings.keys():
+        setting_change_info[setting_name] = _before_setting_template(settings[setting_name])
+    an_settings_changed[an_id] = setting_change_info
+
+func _before_setting_template(before_value: Variant) -> Dictionary[String, Variant]:
+    var before_info: Dictionary[String, Variant] = {
+        "before": before_value,
+        "after": before_value,
+    }
+    return before_info
+
+func trim_unchanged_settings() -> void:
+    for an_id in an_settings_changed.keys():
+        var setting_change_info: Dictionary[String, Dictionary] = an_settings_changed[an_id]
+        for setting_name in setting_change_info.keys():
+            if setting_change_info[setting_name]["before"] == setting_change_info[setting_name]["after"]:
+                setting_change_info.erase(setting_name)
+        if setting_change_info.size() == 0:
+            an_settings_changed.erase(an_id)
+
+func get_settings_changed_for_an(an: HyAssetNode) -> Dictionary[String, Dictionary]:
+    return an_settings_changed.get(an.an_node_id, Dictionary({}, TYPE_STRING, &"", null, TYPE_DICTIONARY, &"", null))
+
+func commit(undo_redo: UndoRedo) -> void:
+    var merge_mode: = UndoRedo.MERGE_ENDS if has_existing_action else UndoRedo.MERGE_DISABLE
+    _make_action(undo_redo, merge_mode)
+
+func _make_action(undo_redo: UndoRedo, merge_mode: UndoRedo.MergeMode) -> void:
+    has_existing_action = true
+    undo_redo.create_action(get_history_text(), merge_mode)
+    
+    for changed_an_id in an_settings_changed.keys():
+        var an: = editor.all_asset_nodes[changed_an_id]
+        var old_settings: = an.settings.duplicate_deep()
+        var new_settings: = an.settings.duplicate_deep()
+        for setting_name in an_settings_changed[changed_an_id].keys():
+            var vals: = an_settings_changed[changed_an_id][setting_name] as Dictionary[String, Variant]
+            old_settings[setting_name] = vals["before"]
+            new_settings[setting_name] = vals["after"]
+        undo_redo.add_undo_property(an, "settings", old_settings)
+        undo_redo.add_do_property(an, "settings", new_settings)
+    
+    undo_redo.add_undo_method(editor.register_asset_nodes.bind(deleted_asset_nodes))
+    undo_redo.add_do_method(editor.register_asset_nodes.bind(created_asset_nodes))
+    
+    for graph in graph_undo_steps.keys():
+        graph_undo_steps[graph].register_action(undo_redo, graph, editor)
+
+    undo_redo.add_undo_method(editor.remove_asset_nodes.bind(created_asset_nodes))
+    undo_redo.add_do_method(editor.remove_asset_nodes.bind(deleted_asset_nodes))
+    
+    undo_redo.commit_action(true)
+    
+    
+

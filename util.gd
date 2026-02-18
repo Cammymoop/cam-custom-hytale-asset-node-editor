@@ -88,3 +88,17 @@ func get_icon_for_color(icon_color: Color) -> Texture2D:
     var img: = Image.create(icon_size, icon_size, false, Image.FORMAT_RGB8)
     img.fill(icon_color)
     return ImageTexture.create_from_image(img)
+
+func out_connections(conn_infos: Array[Dictionary], graph_node_name: String) -> Array[Dictionary]:
+    var out_conn_infos: Array[Dictionary] = []
+    for conn_info in conn_infos:
+        if conn_info.get("to_node", "") == graph_node_name:
+            out_conn_infos.append(conn_info)
+    return out_conn_infos
+
+func in_connections(conn_infos: Array[Dictionary], graph_node_name: String) -> Array[Dictionary]:
+    var in_conn_infos: Array[Dictionary] = []
+    for conn_info in conn_infos:
+        if conn_info.get("from_node", "") == graph_node_name:
+            in_conn_infos.append(conn_info)
+    return in_conn_infos
