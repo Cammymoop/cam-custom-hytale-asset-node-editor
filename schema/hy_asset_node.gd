@@ -19,6 +19,13 @@ class AuxData:
         var new_aux_data: = duplicate()
         new_aux_data.output_to_node_id = parent_id
         return new_aux_data
+    
+    static func update_aux_parents_for_tree(at_asset_node: HyAssetNode, aux_data_dict: Dictionary[String, AuxData]) -> void:
+        var child_ans: Array[HyAssetNode] = at_asset_node.get_all_connected_nodes()
+        for child_an in child_ans:
+            var an_id: = child_an.an_node_id
+            aux_data_dict[an_id].output_to_node_id = at_asset_node.an_node_id
+            update_aux_parents_for_tree(child_an, aux_data_dict)
 
 signal settings_changed()
 

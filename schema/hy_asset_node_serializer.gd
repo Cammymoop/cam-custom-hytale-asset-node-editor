@@ -640,33 +640,37 @@ func serialize_multiple_an_trees(an_trees: Array[HyAssetNode]) -> Array[Dictiona
     return serialized_an_trees
 
 func serialize_node_editor_metadata(editor: CHANE_AssetNodeEditor) -> Dictionary:
-    var serialized_node_meta: Dictionary = {}
     var root_an_pos: = editor.asset_node_aux_data[editor.root_asset_node.an_node_id].position
     var fallback_pos: = get_serialize_offset_scaled_pos(root_an_pos - Vector2(200, 200))
-    
-    for an_id in editor.all_asset_nodes.keys():
-        var an: = editor.all_asset_nodes[an_id]
-        if not editor.asset_node_aux_data.has(an_id):
-            push_warning("No aux data for asset node %s, using fallback position" % an_id)
-            serialized_node_meta[an_id] = serialize_an_metadata(an, fallback_pos)
-            continue
 
-        var aux: = editor.asset_node_aux_data[an_id]
-        serialized_node_meta[an_id] = serialize_an_metadata(an, aux.position)
-
+    var serialized_node_meta: Dictionary = serialize_ans_metadata(editor.get_all_asset_nodes(), editor.asset_node_aux_data, fallback_pos)
     var serialized_metadata: Dictionary = { MetadataKeys.NodesMeta: serialized_node_meta }
 
     serialized_metadata[MetadataKeys.FloatingRoots] = serialize_multiple_an_trees(editor.floating_tree_roots)
-
-    serialized_metadata[MetadataKeys.WorkspaceId] = editor.hy_workspace_id
     
     serialized_metadata[MetadataKeys.Groups] = serialize_graph_edit_groups(editor)
+
+    serialized_metadata[MetadataKeys.WorkspaceId] = editor.hy_workspace_id
     
     # include other metadata we found in the file but don't do anything with
     for other_key in editor.raw_metadata.keys():
         if serialized_metadata.has(other_key):
             continue
         serialized_metadata[other_key] = editor.raw_metadata[other_key]
+    return serialized_metadata
+
+func serialize_ans_metadata(asset_nodes: Array[HyAssetNode], asset_node_aux_data: Dictionary, fallback_pos: Vector2 = Vector2.ZERO) -> Dictionary:
+    var serialized_metadata: Dictionary = {}
+    for an in asset_nodes:
+        var an_id: = an.an_node_id
+        if not asset_node_aux_data.has(an_id):
+            push_warning("No aux data for asset node %s, using fallback position" % an_id)
+            serialized_metadata[an_id] = serialize_an_metadata(an, fallback_pos)
+            continue
+        
+        var aux: = asset_node_aux_data[an_id] as HyAssetNode.AuxData
+        assert(aux, "Unexpected value in aux_data for asset node %s : %s" % [an_id, asset_node_aux_data[an_id]])
+        serialized_metadata[an_id] = serialize_an_metadata(an, aux.position)
     return serialized_metadata
 
 func serialize_graph_edit_groups(editor: CHANE_AssetNodeEditor) -> Array[Dictionary]:
@@ -802,3 +806,24 @@ func serialize_individual_setting_data(raw_value: Variant, gd_type: int, sub_gd_
             return arr
 
     return raw_value
+
+
+# Helpers for working with fragments
+
+func deserialize_fragment_as_full_graph(asset_node_data: Array[Dictionary], editor_metadata: Dictionary) -> EntireGraphParseResult:
+    var result: = EntireGraphParseResult.new()
+    var node_meta: Dictionary = editor_metadata.get(MetadataKeys.NodesMeta, {})
+    result.asset_node_aux_data = create_node_aux_data_from_node_meta(node_meta)
+
+    for tree_root_data in asset_node_data:
+        var inference_hints: = {
+            "asset_node_type": tree_root_data.get(MetadataKeys.CHANE, {}).get("asset_node_type", "")
+        }
+        var root_parse_result: = parse_asset_node_tree(result.was_old_style_format, tree_root_data, inference_hints, result.asset_node_aux_data)
+        result.add_floating_result(root_parse_result)
+        if not root_parse_result.success:
+            push_error("Failed to parse asset node tree root")
+            result.success = false
+            return result
+        HyAssetNode.AuxData.update_aux_parents_for_tree(root_parse_result.root_node, result.asset_node_aux_data)
+    return result

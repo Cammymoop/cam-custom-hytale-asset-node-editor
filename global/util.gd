@@ -107,3 +107,17 @@ func in_connections(conn_infos: Array[Dictionary], graph_node_name: String, only
 
 func str_empty_or_match(str_a: String, str_b: String) -> bool:
     return str_a == "" or str_b == "" or str_a == str_b
+
+func script_type_filtered(arr: Array, narrowing_script: Script) -> Array:
+    var filtered_arr: Array = Array([], TYPE_OBJECT, narrowing_script.get_class(), narrowing_script)
+    for item in arr:
+        if item and typeof(item) == TYPE_OBJECT and is_instance_of(item, narrowing_script):
+            filtered_arr.append(item)
+    return filtered_arr
+
+func engine_class_filtered(arr: Array, engine_class: StringName) -> Array:
+    var filtered_arr: Array = Array([], TYPE_OBJECT, engine_class, null)
+    for item in arr:
+        if item and typeof(item) == TYPE_OBJECT and ClassDB.is_parent_class(item.get_class(), engine_class):
+            filtered_arr.append(item)
+    return filtered_arr

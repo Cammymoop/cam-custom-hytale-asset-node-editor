@@ -343,7 +343,7 @@ func create_loaded_graph_elements(graph_result: CHANE_HyAssetNodeSerializer.Enti
 
 func _register_asset_nodes_from_graph_result(graph_result: CHANE_HyAssetNodeSerializer.EntireGraphParseResult) -> void:
     all_asset_nodes = graph_result.all_nodes
-    asset_node_aux_data = graph_result.asset_node_aux_data
+    asset_node_aux_data = graph_result.asset_node_aux_data.duplicate()
     update_aux_parents_for_tree(graph_result.root_node)
     for floating_root_an in graph_result.floating_tree_roots.values():
         update_aux_parents_for_tree(floating_root_an)
@@ -397,14 +397,15 @@ func remove_asset_nodes(asset_nodes: Array[HyAssetNode]) -> void:
 ## Create duplicates of all nodes in the given set, maintaining connections between nodes within the set
 ## Returns the list of new subtree roots if return_roots = true, otherwise returns the list of all new asset nodes
 ## Also register the new asset nodes and add them to the current undo step if register = true
-func create_duplicate_filtered_an_set(asset_node_set: Array[HyAssetNode], return_roots: bool, register: bool = true) -> Array[HyAssetNode]:
+## If register = false, duplicate aux data will be created and added into out_aux
+func create_duplicate_filtered_an_set(asset_node_set: Array[HyAssetNode], return_roots: bool, register: bool = true, out_aux: Dictionary[String, HyAssetNode.AuxData] = {}) -> Array[HyAssetNode]:
     var ret: Array[HyAssetNode] = []
     if asset_node_set.size() == 0:
         return ret
     var set_roots: Array[HyAssetNode] = get_an_roots_within_registered_set(asset_node_set)
 
     for set_root in set_roots:
-        var new_duplicate_ans: = create_duplicate_filtered_an_tree(set_root, asset_node_set, register)
+        var new_duplicate_ans: = create_duplicate_filtered_an_tree(set_root, asset_node_set, register, out_aux)
         if return_roots:
             ret.append(new_duplicate_ans[0])
         else:
@@ -414,16 +415,19 @@ func create_duplicate_filtered_an_set(asset_node_set: Array[HyAssetNode], return
 ## Create duplicates of all nodes reachable from the given root node while only passing through nodes in the given set
 ## Maintains connections within the subtree
 ## Also register the new asset nodes and add them to the current undo step if register = true
+## If register = false, duplicate aux data will be created and added into out_aux
 ## If asset_node_set is empty, no filter is applied, all nodes in the subtree are duplicated
-func create_duplicate_filtered_an_tree(tree_root: HyAssetNode, asset_node_set: Array[HyAssetNode], register: bool = true) -> Array[HyAssetNode]:
+func create_duplicate_filtered_an_tree(tree_root: HyAssetNode, asset_node_set: Array[HyAssetNode], register: bool = true, out_aux: Dictionary[String, HyAssetNode.AuxData] = {}) -> Array[HyAssetNode]:
     var new_root_an: HyAssetNode = get_duplicate_asset_node(tree_root)
     if register:
         register_duplicate_asset_node(new_root_an, tree_root.an_node_id)
+    else:
+        out_aux[new_root_an.an_node_id] = asset_node_aux_data[tree_root.an_node_id].duplicate(false)
     var all_new_ans: Array[HyAssetNode] = []
-    _duplicate_filtered_an_tree_recurse(new_root_an, asset_node_set, register, all_new_ans)
+    _duplicate_filtered_an_tree_recurse(new_root_an, asset_node_set, register, all_new_ans, out_aux)
     return all_new_ans
 
-func _duplicate_filtered_an_tree_recurse(current_an: HyAssetNode, asset_node_set: Array[HyAssetNode], register: bool, all_new_ans: Array[HyAssetNode]) -> void:
+func _duplicate_filtered_an_tree_recurse(current_an: HyAssetNode, asset_node_set: Array[HyAssetNode], register: bool, all_new_ans: Array[HyAssetNode], out_aux: Dictionary[String, HyAssetNode.AuxData]) -> void:
     all_new_ans.append(current_an)
     for conn_name in current_an.connection_list:
         for connected_an in current_an.get_all_connected_nodes(conn_name):
@@ -433,7 +437,9 @@ func _duplicate_filtered_an_tree_recurse(current_an: HyAssetNode, asset_node_set
             current_an.append_node_to_connection(conn_name, new_an)
             if register:
                 register_duplicate_asset_node(new_an, connected_an.an_node_id, current_an.an_node_id)
-            _duplicate_filtered_an_tree_recurse(new_an, asset_node_set, register, all_new_ans)
+            else:
+                out_aux[new_an.an_node_id] = asset_node_aux_data[connected_an.an_node_id].duplicate_with_parent(current_an.an_node_id)
+            _duplicate_filtered_an_tree_recurse(new_an, asset_node_set, register, all_new_ans, out_aux)
 
 func get_duplicate_asset_node(asset_node: HyAssetNode) -> HyAssetNode:
     var new_id: = CHANE_HyAssetNodeSerializer.reroll_an_id(asset_node.an_node_id)
@@ -446,10 +452,21 @@ func create_single_duplicate_asset_node(asset_node: HyAssetNode) -> HyAssetNode:
     return new_an
 
 func get_an_roots_within_registered_set(asset_node_set: Array[HyAssetNode]) -> Array[HyAssetNode]:
+    return get_an_roots_within_set(asset_node_set, asset_node_aux_data)
+
+static func get_an_roots_within_set(asset_node_set: Variant, associated_aux: Dictionary[String, HyAssetNode.AuxData]) -> Array[HyAssetNode]:
     var root_ans: Array[HyAssetNode] = []
-    for asset_node in asset_node_set:
-        var parent_an_id: = asset_node_aux_data[asset_node.an_node_id].output_to_node_id
-        if not parent_an_id or all_asset_nodes[parent_an_id] not in asset_node_set:
+    var asset_nodes: Array = []
+    if typeof(asset_node_set) == TYPE_ARRAY:
+        asset_nodes = asset_node_set
+    elif typeof(asset_node_set) == TYPE_DICTIONARY:
+        asset_nodes = asset_node_set.values()
+    else:
+        push_error("Invalid asset node set type: %s" % [type_string(typeof(asset_node_set))])
+
+    for asset_node in asset_nodes:
+        var parent_an_id: = associated_aux[asset_node.an_node_id].output_to_node_id
+        if not parent_an_id or associated_aux[parent_an_id] not in asset_node_set:
             root_ans.append(asset_node)
     return root_ans
 
@@ -752,8 +769,10 @@ func get_all_groups() -> Array[GraphFrame]:
 func gn_is_special(graph_node: CustomGraphNode) -> bool:
     return graph_node.get_meta("is_special_gn", false)
 
-func make_new_graph_node_for_an(asset_node: HyAssetNode, at_pos_offset: Vector2, centered: bool = false) -> CustomGraphNode:
-    asset_node_aux_data[asset_node.an_node_id].position = at_pos_offset
+func make_new_graph_node_for_an(asset_node: HyAssetNode, at_pos_offset: Vector2, centered: bool = false, aux_data_dict: Dictionary[String, HyAssetNode.AuxData] = {}) -> CustomGraphNode:
+    if not aux_data_dict:
+        aux_data_dict = asset_node_aux_data
+    aux_data_dict[asset_node.an_node_id].position = at_pos_offset
     var new_gn: CustomGraphNode = graph_node_factory.make_new_graph_node_for_asset_node(asset_node, true, at_pos_offset, centered)
     return new_gn
 
@@ -817,20 +836,22 @@ func _get_new_gn_conn_recurse(cur_gn: CustomGraphNode, ans_to_gns: Dictionary, c
             })
             _get_new_gn_conn_recurse(connected_gn, ans_to_gns, connection_infos)
 
-func new_graph_nodes_for_tree(tree_root_node: HyAssetNode, offset_pos: Vector2 = Vector2.ZERO) -> Dictionary[HyAssetNode, CustomGraphNode]:
+func new_graph_nodes_for_tree(tree_root_node: HyAssetNode, offset_pos: Vector2 = Vector2.ZERO, aux_data_dict: Dictionary[String, HyAssetNode.AuxData] = {}) -> Dictionary[HyAssetNode, CustomGraphNode]:
+    if not aux_data_dict:
+        aux_data_dict = asset_node_aux_data
     var new_gns_by_an: Dictionary[HyAssetNode, CustomGraphNode] = {}
-    _recursive_new_graph_nodes(tree_root_node, offset_pos, new_gns_by_an)
+    _recursive_new_graph_nodes(tree_root_node, offset_pos, new_gns_by_an, aux_data_dict)
     return new_gns_by_an
 
-func _recursive_new_graph_nodes(at_asset_node: HyAssetNode, offset_pos: Vector2, new_gns_by_an: Dictionary[HyAssetNode, CustomGraphNode]) -> void:
-    var aux: = asset_node_aux_data[at_asset_node.an_node_id]
-    var this_gn: = make_new_graph_node_for_an(at_asset_node, aux.position + offset_pos)
+func _recursive_new_graph_nodes(at_asset_node: HyAssetNode, offset_pos: Vector2, new_gns_by_an: Dictionary[HyAssetNode, CustomGraphNode], aux_data_dict: Dictionary[String, HyAssetNode.AuxData]) -> void:
+    var aux: = aux_data_dict[at_asset_node.an_node_id]
+    var this_gn: = make_new_graph_node_for_an(at_asset_node, aux.position + offset_pos, false, aux_data_dict)
     new_gns_by_an[at_asset_node] = this_gn
 
     var modified_connections: = get_gn_modified_connections(this_gn, at_asset_node)
     for conn_name in modified_connections:
         for connected_asset_node in modified_connections[conn_name]:
-            _recursive_new_graph_nodes(connected_asset_node, offset_pos, new_gns_by_an)
+            _recursive_new_graph_nodes(connected_asset_node, offset_pos, new_gns_by_an, aux_data_dict)
 
 func get_gn_modified_connected_ans_for_connection(the_gn: CustomGraphNode, the_an: HyAssetNode, conn_name: String) -> Array[HyAssetNode]:
     if gn_is_special(the_gn):
@@ -850,3 +871,16 @@ func get_gn_modified_connections(the_gn: CustomGraphNode, the_an: HyAssetNode) -
 func get_duplicate_ge_name(old_ge_name: String) -> String:
     var base_name: = old_ge_name.split("--")[0]
     return graph_node_factory.new_graph_node_name(base_name)
+
+func get_all_asset_nodes() -> Array[HyAssetNode]:
+    return Array(all_asset_nodes.values(), TYPE_OBJECT, &"HyAssetNode", null)
+
+func is_workspace_id_compatible(workspace_id: String) -> bool:
+    if not workspace_id:
+        # Allow trying with unknown workspaces
+        return true
+
+    var possible_workspaces: = SchemaManager.schema.workspace_root_output_types.keys()
+    possible_workspaces.append_array(SchemaManager.schema.workspace_no_output_types.keys())
+    
+    return possible_workspaces.has(workspace_id)
