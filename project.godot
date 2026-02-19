@@ -17,21 +17,21 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 config/name="Cam Hytale ANE (Asset Node Editor)"
 config/description="[Alpha] A custom, cross-platform Asset Node editor for hytale asset nodes, primarily for worldgen v2"
 config/version="0.4.0"
-run/main_scene="res://main.tscn"
+run/main_scene="res://graph_editor/standalone_editor.tscn"
 config/use_custom_user_dir=true
 config/custom_user_dir_name="CamHytaleANE"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 run/low_processor_mode=true
-config/icon="uid://b6atlki6cty5r"
+config/icon="uid://dm1qflfglyyv7"
 
 [autoload]
 
 ANESettings="*uid://js4qrto53qyd"
-Util="*res://util.gd"
+Util="*res://global/util.gd"
 SchemaManager="*uid://dadtbq1o8e5kp"
 NodeFuzzySearcher="*uid://talo204sdbds"
-ThemeColorVariants="*res://ui/theme_color_variants.tscn"
-TypeColors="*res://model/type_colors.gd"
+ThemeColorVariants="*res://global/theme_color_variants.tscn"
+TypeColors="*res://global/type_colors.gd"
 ClipboardManager="*uid://bs1q4dced67u7"
 FileDialogHandler="*uid://dyeeven10x5a6"
 GlobalToaster="*uid://cm5uv0dl20h06"

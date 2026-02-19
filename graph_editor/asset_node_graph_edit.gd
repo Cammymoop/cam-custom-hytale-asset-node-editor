@@ -1,15 +1,12 @@
 extends GraphEdit
 class_name CHANE_AssetNodeGraphEdit
 
-const UndoStep = preload("res://graph_editor/undo_step.gd")
-const GraphUndoStep = preload("res://graph_editor/graph_undo_step.gd")
+const UndoStep = preload("res://graph_editor/undo_redo/undo_step.gd")
+const GraphUndoStep = preload("res://graph_editor/undo_redo/graph_undo_step.gd")
 
 signal zoom_changed(new_zoom: float)
 
-const SpecialGNFactory = preload("res://custom_graph_nodes/special_gn_factory.gd")
-
-@export var save_formatted_json: = true
-@export_file_path("*.json") var test_json_file: String = ""
+const SpecialGNFactory = preload("res://graph_editor/custom_graph_nodes/special_gn_factory.gd")
 
 var editor: CHANE_AssetNodeEditor = null
 
@@ -950,7 +947,7 @@ func start_connection_cut(at_global_pos: Vector2) -> void:
     connection_cut_active = true
     connection_cut_start_point = at_global_pos
     
-    connection_cut_line = preload("res://ui/connection_cutting_line.tscn").instantiate() as Line2D
+    connection_cut_line = preload("res://graph_editor/connection_cutting_line.tscn").instantiate() as Line2D
     connection_cut_line.clear_points()
     connection_cut_line.add_point(Vector2.ZERO)
     connection_cut_line.z_index = 10

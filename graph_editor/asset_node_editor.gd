@@ -3,10 +3,10 @@ extends Control
 
 const AssetNodeFileHelper = preload("./asset_node_file_helper.gd")
 
-const SpecialGNFactory = preload("res://custom_graph_nodes/special_gn_factory.gd")
-const GraphNodeFactory = preload("res://custom_graph_nodes/graph_node_factory.gd")
+const SpecialGNFactory = preload("res://graph_editor/custom_graph_nodes/special_gn_factory.gd")
+const GraphNodeFactory = preload("res://graph_editor/custom_graph_nodes/graph_node_factory.gd")
 
-const UndoManager = preload("res://graph_editor/undo_manager.gd")
+const UndoManager = preload("res://graph_editor/undo_redo/undo_manager.gd")
 
 enum ContextMenuItems {
     COPY_NODES = 1,
