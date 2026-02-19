@@ -22,7 +22,7 @@ config/use_custom_user_dir=true
 config/custom_user_dir_name="CamHytaleANE"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 run/low_processor_mode=true
-config/icon="uid://ba757t6dpujfc"
+config/icon="uid://b6atlki6cty5r"
 
 [autoload]
 
