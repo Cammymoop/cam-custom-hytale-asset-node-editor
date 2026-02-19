@@ -57,8 +57,8 @@ var serializer: CHANE_HyAssetNodeSerializer
 @export var use_json_positions: = true
 @export var json_positions_scale: Vector2 = Vector2(0.6, 0.6)
 
-@onready var special_gn_factory: SpecialGNFactory = SpecialGNFactory.new()
 @onready var graph_node_factory: GraphNodeFactory = GraphNodeFactory.new()
+@onready var special_gn_factory: SpecialGNFactory = graph_node_factory.special_gn_factory
 
 var undo_manager: UndoManager = UndoManager.new()
 
@@ -81,6 +81,9 @@ var file_helper: AssetNodeFileHelper
 var file_history_version: int = -10 
 
 func _ready() -> void:
+    serializer = CHANE_HyAssetNodeSerializer.new()
+    serializer.name = "HyAssetNodeSerializer"
+    add_child(serializer, true)
     undo_manager.set_editor(self)
 
     file_helper = AssetNodeFileHelper.new()
@@ -109,7 +112,7 @@ func _ready() -> void:
     if not is_loaded:
         popup_menu_root.show_new_file_type_chooser()
     
-    add_child(special_gn_factory, true)
+    graph_node_factory.name = "GraphNodeFactory"
     add_child(graph_node_factory, true)
 
 func is_different_from_file_version() -> bool:
@@ -319,6 +322,7 @@ func set_root_node(new_root_node: HyAssetNode) -> void:
     root_asset_node = new_root_node
 
 func setup_edited_graph_from_parse_result(parse_graph_result: CHANE_HyAssetNodeSerializer.EntireGraphParseResult) -> void:
+    prints("Setting up edited graph from parse result")
     is_loaded = true
     hy_workspace_id = parse_graph_result.hy_workspace_id
     use_json_positions = parse_graph_result.has_positions
@@ -331,8 +335,9 @@ func setup_edited_graph_from_parse_result(parse_graph_result: CHANE_HyAssetNodeS
 func create_loaded_graph_elements(graph_result: CHANE_HyAssetNodeSerializer.EntireGraphParseResult) -> void:
     var an_roots: Array[HyAssetNode] = [root_asset_node]
     an_roots.append_array(graph_result.floating_tree_roots.values())
-    focused_graph.make_and_position_graph_nodes_for_trees(an_roots, true)
-    focused_graph.make_json_groups(graph_result.editor_metadata.get("$Groups", []))
+    prints("Creating loaded graph nodes, an roots: %s" % an_roots.size())
+    add_graph_nodes_for_new_asset_node_trees(focused_graph, an_roots)
+    focused_graph.make_json_groups(Array(graph_result.editor_metadata.get("$Groups", []), TYPE_DICTIONARY, &"", null))
     
     focused_graph.scroll_to_pos_offset(asset_node_aux_data[root_asset_node.an_node_id].position)
 
@@ -354,11 +359,18 @@ func register_asset_node(asset_node: HyAssetNode, aux_data: HyAssetNode.AuxData 
     assert(asset_node.an_node_id, "Cannot register an asset node with no ID")
     if OS.has_feature("debug") and all_asset_nodes.has(asset_node.an_node_id):
         print_debug("Re-registering asset node with existing ID %s" % asset_node.an_node_id)
+    _register_asset_node(asset_node, aux_data)
+
+func _register_asset_node(asset_node: HyAssetNode, aux_data: HyAssetNode.AuxData = null) -> void:
     all_asset_nodes[asset_node.an_node_id] = asset_node
     if aux_data:
         asset_node_aux_data[asset_node.an_node_id] = aux_data
     else:
         asset_node_aux_data[asset_node.an_node_id] = HyAssetNode.AuxData.new()
+
+func register_asset_nodes(asset_nodes: Array[HyAssetNode], aux_data: Array[HyAssetNode.AuxData]) -> void:
+    for i in asset_nodes.size():
+        _register_asset_node(asset_nodes[i], aux_data[i])
 
 func register_asset_node_at(asset_node: HyAssetNode, node_pos: Vector2, with_parent_id: String = "") -> void:
     var aux_data: HyAssetNode.AuxData = HyAssetNode.AuxData.new()
@@ -377,6 +389,10 @@ func remove_asset_node_id(asset_node_id: String) -> void:
 func remove_asset_node(asset_node: HyAssetNode) -> void:
     assert(asset_node.an_node_id, "Cannot remove an asset node with no ID")
     remove_asset_node_id(asset_node.an_node_id)
+
+func remove_asset_nodes(asset_nodes: Array[HyAssetNode]) -> void:
+    for asset_node in asset_nodes:
+        remove_asset_node_id(asset_node.an_node_id)
 
 ## Create duplicates of all nodes in the given set, maintaining connections between nodes within the set
 ## Returns the list of new subtree roots if return_roots = true, otherwise returns the list of all new asset nodes
@@ -602,7 +618,7 @@ func splice_graph_node_into_connection(graph: CHANE_AssetNodeGraphEdit, insert_g
         insert_on_input_idx = maxi(0, insert_on_input_idx)
         connect_graph_nodes([_get_splice_right_conn(conn_info, insert_gn, insert_on_input_idx)], graph)
     
-    undo_manager.commit()
+    undo_manager.commit_current_undo_step()
     
 
 func connect_graph_nodes(conn_infos: Array[Dictionary], graph: CHANE_AssetNodeGraphEdit) -> void:
@@ -643,7 +659,7 @@ func connect_graph_nodes(conn_infos: Array[Dictionary], graph: CHANE_AssetNodeGr
         undo_step.add_asset_node_connection(from_an, from_conn_name, to_an)
     
     if is_new_step:
-        undo_manager.commit()
+        undo_manager.commit_current_undo_step()
 
 func disconnect_graph_nodes(conn_infos: Array[Dictionary], graph: CHANE_AssetNodeGraphEdit) -> void:
     if conn_infos.size() == 0:
@@ -667,7 +683,7 @@ func disconnect_graph_nodes(conn_infos: Array[Dictionary], graph: CHANE_AssetNod
         undo_step.remove_asset_node_connection(from_an, from_conn_name, to_an)
     
     if is_new_step:
-        undo_manager.commit()
+        undo_manager.commit_current_undo_step()
 
 func _connect_asset_node_to(connecting_to_an_id: String, connecting_an_id: String, connection_name: String) -> void:
     var connecting_to_an: = all_asset_nodes[connecting_to_an_id]
@@ -755,6 +771,8 @@ func get_gn_own_asset_nodes(graph_node: CustomGraphNode) -> Array[HyAssetNode]:
 func add_graph_nodes_for_new_asset_node_trees(graph: CHANE_AssetNodeGraphEdit, tree_roots: Array[HyAssetNode], offset_pos: Vector2 = Vector2.ZERO) -> Array[GraphElement]:
     if graph.snapping_enabled:
         offset_pos = offset_pos.snapped(Vector2.ONE * graph.snapping_distance)
+    
+    prints("Adding graph nodes to graph %s" % graph.get_path())
 
     var graph_undo_step: = undo_manager.start_or_continue_graph_undo_step("[Add] Nodes", graph)
     var is_new_step: = undo_manager.is_new_step
@@ -762,14 +780,17 @@ func add_graph_nodes_for_new_asset_node_trees(graph: CHANE_AssetNodeGraphEdit, t
     var all_new_ges: Array[GraphElement] = []
     var all_new_connections: Array[Dictionary] = []
     for tree_root_node in tree_roots:
+        prints("Adding graph nodes for new asset node tree %s" % tree_root_node.an_node_id)
         var new_ans_to_gns: = new_graph_nodes_for_tree(tree_root_node, offset_pos)
-        all_new_ges.append_array(new_ans_to_gns.keys())
+        prints("new ans to gns count: %s" % new_ans_to_gns.size())
+        all_new_ges.append_array(new_ans_to_gns.values())
 
         all_new_connections.append_array(get_new_gn_connections(new_ans_to_gns[tree_root_node], new_ans_to_gns))
     
+    prints("all new ges count: %s" % all_new_ges.size())
     graph_undo_step.add_new_graph_elements(all_new_ges, all_new_connections, [])
     if is_new_step:
-        undo_manager.commit()
+        undo_manager.commit_current_undo_step()
     return all_new_ges
     
 func get_new_gn_connections(cur_gn: CustomGraphNode, ans_to_gns: Dictionary) -> Array[Dictionary]:

@@ -55,16 +55,16 @@ func rename_current_undo_step(new_action_name: String) -> void:
     if active_undo_step:
         active_undo_step.action_name = new_action_name
 
-func commit_if_new() -> void:
+func commit_if_new(merge_mode_override: int = -1) -> void:
     if active_undo_step and is_new_step:
-        commit_current_undo_step()
+        commit_current_undo_step(merge_mode_override)
 
-func commit_current_undo_step() -> void:
+func commit_current_undo_step(merge_mode_override: int = -1) -> void:
     if not active_undo_step:
         push_error("No active undo step to commit")
         return
 
-    active_undo_step.commit(undo_redo)
+    active_undo_step.commit(undo_redo, merge_mode_override)
     active_undo_step = null
 
 

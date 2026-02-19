@@ -2,11 +2,15 @@ extends Node
 
 const SpecialGNFactory = preload("res://custom_graph_nodes/special_gn_factory.gd")
 
-var special_gn_factory: SpecialGNFactory
+@onready var special_gn_factory: SpecialGNFactory = SpecialGNFactory.new()
 
 var global_gn_counter: int = 0
 
 @export var gn_min_width: = 90
+
+func _ready() -> void:
+    special_gn_factory.name = "SpecialGNFactory"
+    add_child(special_gn_factory, true)
 
 func new_graph_node_name(base_name: String) -> String:
     global_gn_counter += 1

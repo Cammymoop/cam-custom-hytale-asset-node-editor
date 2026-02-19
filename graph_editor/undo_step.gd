@@ -18,6 +18,9 @@ var removed_asset_node_connections: Array[Dictionary] = []
 
 var an_settings_changed: Dictionary[String, Dictionary] = {}
 
+var custom_undo_callbacks: Array[Callable] = []
+var custom_redo_callbacks: Array[Callable] = []
+
 var has_existing_action: bool = false
 
 var action_name: String = "Action"
@@ -33,8 +36,11 @@ func add_graph_undo(graph: CHANE_AssetNodeGraphEdit, undo_step: GraphUndoStep) -
 
 func get_undo_for_graph(graph: CHANE_AssetNodeGraphEdit) -> GraphUndoStep:
     if not graph_undo_steps.has(graph):
+        prints("Getting new graph undo step for graph %s" % graph.get_path())
         graph_undo_steps[graph] = GraphUndoStep.new()
         graph_undo_steps[graph].selected_before = graph.get_selected_ges()
+    else:
+        prints("Getting existing graph undo step for graph %s" % graph.get_path())
     return graph_undo_steps[graph]
 
 func register_an_settings_before_change(an_id: String, settings: Dictionary) -> void:
@@ -104,8 +110,10 @@ func _add_created_ans(asset_nodes: Array[HyAssetNode]) -> void:
         created_asset_nodes.append(asset_node)
         created_asset_nodes_aux_data.append(editor.asset_node_aux_data[asset_node.an_node_id])
 
-func commit(undo_redo: UndoRedo) -> void:
+func commit(undo_redo: UndoRedo, merge_mode_override: int = -1) -> void:
     var merge_mode: = UndoRedo.MERGE_ENDS if has_existing_action else UndoRedo.MERGE_DISABLE
+    if merge_mode_override >= 0:
+        merge_mode = merge_mode_override as UndoRedo.MergeMode
     _make_action(undo_redo, merge_mode)
 
 func _make_action(undo_redo: UndoRedo, merge_mode: UndoRedo.MergeMode) -> void:
@@ -123,14 +131,21 @@ func _make_action(undo_redo: UndoRedo, merge_mode: UndoRedo.MergeMode) -> void:
         undo_redo.add_undo_property(an, "settings", old_settings)
         undo_redo.add_do_property(an, "settings", new_settings)
     
-    undo_redo.add_undo_method(editor.register_asset_nodes.bind(deleted_asset_nodes))
-    undo_redo.add_do_method(editor.register_asset_nodes.bind(created_asset_nodes))
+    undo_redo.add_undo_method(editor.register_asset_nodes.bind(deleted_asset_nodes, deleted_asset_nodes_aux_data))
+    undo_redo.add_do_method(editor.register_asset_nodes.bind(created_asset_nodes, created_asset_nodes_aux_data))
     
     for graph in graph_undo_steps.keys():
         graph_undo_steps[graph].register_action(undo_redo, graph, editor)
+    
+    for callback in custom_undo_callbacks:
+        undo_redo.add_undo_method(callback)
+    for callback in custom_redo_callbacks:
+        undo_redo.add_do_method(callback)
 
     undo_redo.add_undo_method(editor.remove_asset_nodes.bind(created_asset_nodes))
     undo_redo.add_do_method(editor.remove_asset_nodes.bind(deleted_asset_nodes))
+    
+    prints("committing undo step with execute")
     
     undo_redo.commit_action(true)
     

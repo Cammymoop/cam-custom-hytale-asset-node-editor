@@ -77,6 +77,7 @@ class TreeParseResult:
 
 class EntireGraphParseResult:
     var success: bool = true
+    var hy_workspace_id: String = ""
     var was_old_style_format: bool = false
     var has_positions: bool = false
 
@@ -85,7 +86,7 @@ class EntireGraphParseResult:
     var all_nodes: Dictionary[String, HyAssetNode] = {}
     var floating_tree_roots: Dictionary[String, HyAssetNode] = {}
     var floating_tree_results: Dictionary[String, TreeParseResult] = {}
-    var all_metadata: Dictionary = {}
+    var editor_metadata: Dictionary = {}
     var asset_node_aux_data: Dictionary[String, HyAssetNode.AuxData] = {}
     
     func _add_result_nodes(parse_result: TreeParseResult) -> void:
@@ -207,7 +208,11 @@ func deserialize_entire_graph(graph_data: Dictionary) -> EntireGraphParseResult:
                 continue
 
             if editor_meta_key in graph_data:
-                result.editor_metadata[editor_meta_key] = graph_data[editor_meta_key].duplicate(true)
+                var val_type: = typeof(graph_data[editor_meta_key])
+                if val_type == TYPE_ARRAY or val_type == TYPE_DICTIONARY:
+                    result.editor_metadata[editor_meta_key] = graph_data[editor_meta_key].duplicate(true)
+                else:
+                    result.editor_metadata[editor_meta_key] = graph_data[editor_meta_key]
 
         if graph_data.get(MetadataKeys.WorkspaceId, ""):
             result.hy_workspace_id = graph_data[MetadataKeys.WorkspaceId]
@@ -252,7 +257,7 @@ func deserialize_entire_graph(graph_data: Dictionary) -> EntireGraphParseResult:
     var an_id_list: Array[String] = []
 
     var root_infer_hints: Dictionary = { "asset_node_type": root_node_type }
-    var root_parse_result: = parse_asset_node_tree(result.was_old_style_format, graph_data, result.asset_node_aux_data, root_infer_hints)
+    var root_parse_result: = parse_asset_node_tree(result.was_old_style_format, graph_data, root_infer_hints, result.asset_node_aux_data)
     result.add_root_result(root_parse_result)
     if not root_parse_result.success:
         push_error("Failed to parse asset node root tree")
@@ -281,7 +286,7 @@ func deserialize_entire_graph(graph_data: Dictionary) -> EntireGraphParseResult:
             #continue
         
         # No inference hints for floating tree roots
-        var floating_parse_result: = parse_asset_node_tree(false, floating_tree, aux_data, {})
+        var floating_parse_result: = parse_asset_node_tree(false, floating_tree, {}, aux_data)
         if not floating_parse_result.success:
             push_warning("Failed to parse floating tree root at index %d" % flt_data.find(floating_tree))
 

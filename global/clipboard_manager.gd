@@ -52,7 +52,7 @@ func load_copied_nodes_from_clipboard_str(graph_edit: CHANE_AssetNodeGraphEdit, 
 
     # re-roll all the ids from the clipboard data to ensure that they are unique
     make_incoming_nodeids_unique(parsed_data)
-    var all_tree_results: = deserialize_clipboard_data_roots(parsed_data, graph_edit)
+    var all_tree_results: = deserialize_clipboard_data_roots(parsed_data, graph_edit.editor.serializer)
 
     var all_deserialized_ans: Array[HyAssetNode] = []
     for tree_result in all_tree_results:
@@ -94,12 +94,12 @@ func parse_clipboard_data(clipboard_data: String) -> Dictionary:
     parsed_data["copy_id"] = the_copy_id
     return parsed_data
 
-func deserialize_clipboard_data_roots(parsed_clipboard: Dictionary, graph_edit: CHANE_AssetNodeGraphEdit) -> Array[CHANE_HyAssetNodeSerializer.TreeParseResult]:
+func deserialize_clipboard_data_roots(parsed_clipboard: Dictionary, serializer: CHANE_HyAssetNodeSerializer) -> Array[CHANE_HyAssetNodeSerializer.TreeParseResult]:
     var all_tree_results: Array[CHANE_HyAssetNodeSerializer.TreeParseResult] = []
     var clipboard_nodes_meta: Dictionary[String, Dictionary] = {}
     clipboard_nodes_meta.merge(parsed_clipboard["included_metadata"]["node_metadata"])
     for root_data in parsed_clipboard["asset_node_data"]:
-        all_tree_results.append(graph_edit.serializer.parse_asset_node_tree_with_node_meta(root_data, clipboard_nodes_meta, {}))
+        all_tree_results.append(serializer.parse_asset_node_tree_with_node_meta(root_data, clipboard_nodes_meta, {}))
     return all_tree_results
 
 func serialize_copied_nodes(graph_edit: CHANE_AssetNodeGraphEdit) -> String:
@@ -112,16 +112,18 @@ func serialize_copied_nodes(graph_edit: CHANE_AssetNodeGraphEdit) -> String:
             copied_groups.append(ge)
 
     var center_of_mass: Vector2 = Util.average_graph_element_pos_offset(graph_edit.copied_nodes)
+    
+    var serializer: = graph_edit.editor.serializer
 
-    graph_edit.serializer.serialized_pos_scale = Vector2.ONE
-    graph_edit.serializer.serialized_pos_offset = center_of_mass
-    var serialized_groups: Array[Dictionary] = graph_edit.serializer.serialize_groups(copied_groups)
+    serializer.serialized_pos_scale = Vector2.ONE
+    serializer.serialized_pos_offset = center_of_mass
+    var serialized_groups: Array[Dictionary] = serializer.serialize_groups(copied_groups)
     var serialized_data: Dictionary = {
         "what_is_this": "Clipboard data from Cam Hytale Asset Node Editor",
         "copied_from": "CamHytaleANE:%s" % Util.get_plain_version(),
         "asset_node_data": [],
         "included_metadata": {
-            "node_metadata": graph_edit.serializer.serialize_graph_nodes_metadata(copied_gns),
+            "node_metadata": serializer.serialize_graph_nodes_metadata(copied_gns),
             "hanging_connections": [],
             "links": [],
             "groups": serialized_groups,
@@ -132,7 +134,7 @@ func serialize_copied_nodes(graph_edit: CHANE_AssetNodeGraphEdit) -> String:
     var copied_an_set: Array[HyAssetNode] = graph_edit.get_an_set_for_graph_nodes(copied_gns)
     var copied_an_roots: Array[HyAssetNode] = graph_edit.editor.get_an_roots_within_set(copied_an_set)
     for copied_an_root in copied_an_roots:
-        var serialized_tree: = graph_edit.serializer.serialize_asset_node_tree_within_set(copied_an_root, copied_an_set)
+        var serialized_tree: = serializer.serialize_asset_node_tree_within_set(copied_an_root, copied_an_set)
         serialized_data["asset_node_data"].append(serialized_tree)
     return JSON.stringify(serialized_data, "  " if pretty_print_json else "", false)
 

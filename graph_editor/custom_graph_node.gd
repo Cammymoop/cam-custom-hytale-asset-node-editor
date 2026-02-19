@@ -92,7 +92,7 @@ func update_slot_types(type_id_lookup: Dictionary[String, int]) -> void:
 func update_enabled_slots() -> void:
     var slot_idx: int = 0
     for child in get_children():
-        if not child.visible or not child is Control:
+        if not child is Control or not child.visible:
             continue
         if slot_idx < num_outputs:
             set_slot_enabled_left(slot_idx, true)

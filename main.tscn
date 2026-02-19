@@ -2,9 +2,8 @@
 
 [ext_resource type="Theme" uid="uid://cv3cabit36ilb" path="res://ui/main_theme.tres" id="1_0xm2m"]
 [ext_resource type="Script" uid="uid://b2hqpos1gajgs" path="res://graph_editor/asset_node_graph_edit.gd" id="1_ig7tw"]
-[ext_resource type="Script" uid="uid://dusqkvex4lfkn" path="res://custom_graph_nodes/graph_node_factory.gd" id="4_7mycd"]
+[ext_resource type="Script" uid="uid://jlck4iceuf5m" path="res://graph_editor/asset_node_editor.gd" id="2_272bh"]
 [ext_resource type="PackedScene" uid="uid://cvawkmmdq1u7j" path="res://popup_menu_root.tscn" id="5_7mycd"]
-[ext_resource type="Script" uid="uid://d2ucs5vp8diew" path="res://custom_graph_nodes/special_gn_factory.gd" id="5_lquwl"]
 [ext_resource type="Script" uid="uid://crugojabvgfmf" path="res://ui/toast_message_container.gd" id="17_yaehf"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_074og"]
@@ -75,7 +74,7 @@ _data = {
 &"show": SubResource("Animation_074og")
 }
 
-[node name="BaseControl" type="Control" unique_id=1109592141]
+[node name="AssetNodeEditor" type="Control" unique_id=1109592141 node_paths=PackedStringArray("popup_menu_root")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -83,6 +82,8 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 theme = ExtResource("1_0xm2m")
+script = ExtResource("2_272bh")
+popup_menu_root = NodePath("PopupMenuRoot")
 
 [node name="ANGraphEdit" type="GraphEdit" parent="." unique_id=100492715 node_paths=PackedStringArray("popup_menu_root")]
 layout_mode = 1
@@ -103,13 +104,6 @@ script = ExtResource("1_ig7tw")
 test_json_file = "res://test_files/example_biomes/Basic.json"
 popup_menu_root = NodePath("../PopupMenuRoot")
 json_positions_scale = Vector2(0.6, 0.6)
-
-[node name="SpecialGNFactory" type="Node" parent="ANGraphEdit" unique_id=270931423]
-script = ExtResource("5_lquwl")
-metadata/_custom_type_script = "uid://d2ucs5vp8diew"
-
-[node name="GraphNodeFactory" type="Node" parent="ANGraphEdit" unique_id=1244182821]
-script = ExtResource("4_7mycd")
 
 [node name="PopupMenuRoot" parent="." unique_id=803819119 instance=ExtResource("5_7mycd")]
 layout_mode = 1

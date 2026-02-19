@@ -27,7 +27,6 @@ var floating_tree_roots: Array[HyAssetNode] = []
 var root_node: HyAssetNode = null
 
 @export var popup_menu_root: PopupMenuRoot
-@onready var special_gn_factory: SpecialGNFactory = $SpecialGNFactory
 
 var asset_node_meta: Dictionary[String, Dictionary] = {}
 var all_meta: Dictionary = {}
@@ -100,7 +99,6 @@ func _ready() -> void:
     
     setup_menus()
 
-    #add_valid_left_disconnect_type(1)
     begin_node_move.connect(on_begin_node_move)
     end_node_move.connect(on_end_node_move)
     
@@ -152,7 +150,7 @@ func setup_graph_edit_connection_types() -> void:
         for i in 2:
             var val_type_idx: = type_names.size()
             type_names[val_type_idx] = val_type_name if i == 0 else val_type_name + "::Single"
-            add_valid_connection_type(val_type_idx, val_type_idx)
+            add_valid_connection_type(val_type_idx, val_type_idx - i)
             add_valid_connection_type(val_type_idx, unknown_type_id)
             add_valid_connection_type(unknown_type_id, val_type_idx)
             if i == 1:
@@ -316,6 +314,20 @@ func remove_connection_info(connection_info: Dictionary) -> void:
 
 func remove_multiple_connections(conns_to_remove: Array[Dictionary]) -> void:
     editor.disconnect_graph_nodes(conns_to_remove, self)
+
+func undo_redo_add_connections(conns_to_add: Array[Dictionary]) -> void:
+    for conn_to_add in conns_to_add:
+        _actually_add_connection(conn_to_add)
+
+func _actually_add_connection(conn_to_add: Dictionary) -> void:
+    connect_node(conn_to_add["from_node"], conn_to_add["from_port"], conn_to_add["to_node"], conn_to_add["to_port"])
+
+func undo_redo_remove_connections(conns_to_remove: Array[Dictionary]) -> void:
+    for conn_to_remove in conns_to_remove:
+        _actually_remove_connection(conn_to_remove)
+
+func _actually_remove_connection(conn_to_remove: Dictionary) -> void:
+    disconnect_node(conn_to_remove["from_node"], conn_to_remove["from_port"], conn_to_remove["to_node"], conn_to_remove["to_port"])
 
 func remove_asset_node(asset_node: HyAssetNode) -> void:
     _erase_asset_node(asset_node)
@@ -761,7 +773,7 @@ func duplicate_graph_node(gn: CustomGraphNode, allowed_an_list: Array[HyAssetNod
     if editor.gn_is_special(gn):
         if not allowed_an_list:
             allowed_an_list = editor.get_gn_own_asset_nodes(gn)
-        duplicate_gn = special_gn_factory.make_duplicate_special_gn(gn, allowed_an_list)
+        duplicate_gn = editor.special_gn_factory.make_duplicate_special_gn(gn, allowed_an_list)
     else:
         if not gn.get_meta("hy_asset_node_id", ""):
             duplicate_gn = gn.duplicate()
@@ -1559,7 +1571,7 @@ func dissolve_gn_with_undo(graph_node: CustomGraphNode) -> void:
         editor.connect_graph_nodes(recovered_connections, self)
 
     if is_new_step:
-        editor.undo_manager.commit()
+        editor.undo_manager.commit_current_undo_step()
 
 func get_recovered_connections_for_dissolve(old_out_conn_info: Dictionary, old_in_conn_infos: Array[Dictionary]) -> Array[Dictionary]:
     var template_conn_info: = old_out_conn_info.duplicate()

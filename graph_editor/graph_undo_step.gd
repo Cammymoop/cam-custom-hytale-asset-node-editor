@@ -53,9 +53,11 @@ func _delete_graph_elements(graph: CHANE_AssetNodeGraphEdit, ges_to_delete: Arra
     removed_group_relations.append_array(graph.get_graph_elements_cur_group_relations(ges_to_delete))
 
 func add_new_graph_elements(new_ges: Array[GraphElement], new_connections: Array[Dictionary], new_group_relations: Array[Dictionary] = []) -> void:
+    prints("Adding new graph elements in graph undo step, new ges: %s" % new_ges.size())
     added_graph_elements.append_array(new_ges)
     added_connections.append_array(new_connections)
     added_group_relations.append_array(new_group_relations)
+    prints("cur added graph elements: %s" % added_graph_elements.size())
 
 func add_ges_into_group(ges_to_include: Array[GraphElement], group: GraphFrame) -> void:
     for ge in ges_to_include:
@@ -65,6 +67,7 @@ func add_ges_into_group(ges_to_include: Array[GraphElement], group: GraphFrame) 
         })
 
 func register_action(undo_redo: UndoRedo, graph: CHANE_AssetNodeGraphEdit, _editor: CHANE_AssetNodeEditor) -> void:
+    prints("Registering action for graph %s" % graph.get_path(), "cur added graph elements: %s" % added_graph_elements.size())
     var refresh_group_membership_and_colors: bool = false
 
     var moved_graph_elements_to: Dictionary[GraphElement, Vector2] = {}
@@ -77,6 +80,8 @@ func register_action(undo_redo: UndoRedo, graph: CHANE_AssetNodeGraphEdit, _edit
     if removed_graph_elements.size() > 0:
         undo_redo.add_undo_method(graph.undo_redo_add_ges.bind(removed_graph_elements))
     if added_graph_elements.size() > 0:
+        prints("Undo step is adding graph elements %s to graph %s" % [added_graph_elements.size(), graph.get_path()])
+        undo_redo.add_do_method(prints.bind("do method for adding graph elements"))
         undo_redo.add_do_method(graph.undo_redo_add_ges.bind(added_graph_elements))
     
     if removed_group_relations.size() > 0:

@@ -3,7 +3,7 @@ class_name ManualCurveSpecialGN
 
 const HToggleButtons = preload("res://ui/h_toggle_buttons.gd")
 
-var graph_edit: CHANE_AssetNodeGraphEdit
+var editor: CHANE_AssetNodeEditor
 var asset_node: HyAssetNode
 
 var my_points: Array[Vector2] = []
@@ -40,9 +40,6 @@ func _notification(what: int) -> void:
 
 func _ready() -> void:
     graph_container.add_theme_constant_override("margin_bottom", ANESettings.GRAPH_NODE_MARGIN_BOTTOM_EXTRA)
-    setup_ports()
-    if not graph_edit.zoom_changed.is_connected(on_zoom_changed):
-        graph_edit.zoom_changed.connect(on_zoom_changed)
     mode_buttons.allow_all_off = false
     mode_buttons.option_changed.connect(on_mode_changed)
     mode_buttons.set_text_pressed(cur_mode)
@@ -71,6 +68,19 @@ func _ready() -> void:
         export_as_edit.get_parent().hide()
     export_as_edit.focus_exited.connect(check_show_export_as)
 
+func _enter_tree() -> void:
+    var new_graph_edit: = get_parent() as CHANE_AssetNodeGraphEdit
+    if new_graph_edit:
+        if not new_graph_edit.zoom_changed.is_connected(on_zoom_changed):
+            new_graph_edit.zoom_changed.connect(on_zoom_changed)
+    setup_ports(new_graph_edit)
+
+func _exit_tree() -> void:
+    var old_graph_edit: = get_parent() as CHANE_AssetNodeGraphEdit
+    if old_graph_edit:
+        if old_graph_edit.zoom_changed.is_connected(on_zoom_changed):
+            old_graph_edit.zoom_changed.disconnect(on_zoom_changed)
+
 # Position serialization for all owned asset nodes
 func update_aux_positions(aux_data: Dictionary[String, HyAssetNode.AuxData]) -> void:
     aux_data[asset_node.an_node_id].position = position_offset
@@ -83,12 +93,12 @@ func get_phantom_gn_pos(phantom_index: int) -> Vector2:
     var base_pos: Vector2 = position_offset + child_position_offset + Vector2(size.x, 0)
     return base_pos + child_position_increment * phantom_index
 
-# REQUIRED METHODS FOR SPECIAL GRAPH NODES::
-
-func setup_ports() -> void:
+func setup_ports(cur_graph_edit: CHANE_AssetNodeGraphEdit) -> void:
     # note, don't need to add a child control to enable the first port because there's already multiple children from the scene
     set_slot_enabled_left(0, true)
-    set_slot_type_left(0, graph_edit.type_id_lookup["Curve"])
+    set_slot_type_left(0, cur_graph_edit.type_id_lookup["Curve"])
+
+# REQUIRED METHODS FOR SPECIAL GRAPH NODES::
 
 func get_own_asset_nodes() -> Array[HyAssetNode]:
     var ans: Array[HyAssetNode] = [asset_node]
@@ -136,7 +146,7 @@ func remove_point_at(row_idx: int) -> void:
         push_warning("manual curve special: remove point index %s is out of range %s-%s" % [row_idx, 0, asset_node_count - 1])
     var point_asset_node: HyAssetNode = asset_node.get_connected_node(POINTS_CONNECTION_NAME, row_idx)
     asset_node.remove_node_from_connection_at(POINTS_CONNECTION_NAME, row_idx)
-    graph_edit.remove_asset_node(point_asset_node)
+    editor.remove_asset_node(point_asset_node)
     load_points_from_an_connection()
     
     create_points_change_undo_step(old_points)
@@ -292,7 +302,7 @@ func add_new_point_auto(refresh_view: bool = true) -> void:
         create_points_change_undo_step(old_points)
 
 func _add_new_point_unchecked(with_pos: Vector2 = Vector2.ZERO) -> HyAssetNode:
-    var new_curve_point_an: HyAssetNode = graph_edit.get_new_asset_node("CurvePoint")
+    var new_curve_point_an: HyAssetNode = editor.get_new_asset_node("CurvePoint")
     new_curve_point_an.settings["In"] = with_pos.x
     new_curve_point_an.settings["Out"] = with_pos.y
     asset_node.append_node_to_connection("Points", new_curve_point_an)
@@ -300,31 +310,32 @@ func _add_new_point_unchecked(with_pos: Vector2 = Vector2.ZERO) -> HyAssetNode:
 
 func _pop_asset_node_point() -> void:
     var popped_node: HyAssetNode = asset_node.pop_node_from_connection(POINTS_CONNECTION_NAME)
-    graph_edit.remove_asset_node(popped_node)
+    editor.remove_asset_node(popped_node)
 
 
 func undo_redo_change_points(points_to_restore: Array[Vector2]) -> void:
     replace_points(points_to_restore, false)
 
 func create_points_change_undo_step(old_points: Array[Vector2]) -> void:
-    graph_edit._undo_manager.create_action("Change Manual Curve Points")
+    var undo_manager: = editor.undo_manager
+    var undo_step: = undo_manager.start_or_continue_undo_step("Change Manual Curve Points")
 
-    graph_edit._undo_manager.add_do_method(undo_redo_change_points.bind(my_points.duplicate()))
+    undo_step.custom_redo_callbacks.append(undo_redo_change_points.bind(my_points.duplicate()))
 
-    graph_edit._undo_manager.add_undo_method(undo_redo_change_points.bind(old_points.duplicate()))
+    undo_step.custom_undo_callbacks.append(undo_redo_change_points.bind(old_points.duplicate()))
 
-    graph_edit._undo_manager.commit_action(false)
+    undo_manager.commit_if_new()
 
 func create_points_adj_undo_step(old_points: Array[Vector2]) -> void:
     var merge_mode: = UndoRedo.MERGE_DISABLE if next_adjust_is_new else UndoRedo.MERGE_ENDS
-    graph_edit._undo_manager.create_action("Move Manual Curve Points", merge_mode)
+    var undo_manager: = editor.undo_manager
+    var undo_step: = undo_manager.start_or_continue_undo_step("Move Manual Curve Points")
 
-    graph_edit._undo_manager.add_do_method(undo_redo_change_points.bind(my_points.duplicate()))
+    undo_step.custom_redo_callbacks.append(undo_redo_change_points.bind(my_points.duplicate()))
 
-    graph_edit._undo_manager.add_undo_method(undo_redo_change_points.bind(old_points.duplicate()))
+    undo_step.custom_undo_callbacks.append(undo_redo_change_points.bind(old_points.duplicate()))
 
-    graph_edit._undo_manager.commit_action(false)
-
+    undo_manager.commit_if_new(merge_mode)
 
 func update_extra_settings_menu() -> void:
     for i in extra_settings_menu.item_count:
