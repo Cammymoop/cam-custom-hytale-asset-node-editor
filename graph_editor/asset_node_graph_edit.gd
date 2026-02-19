@@ -12,7 +12,6 @@ const SpecialGNFactory = preload("res://custom_graph_nodes/special_gn_factory.gd
 @export_file_path("*.json") var test_json_file: String = ""
 
 var editor: CHANE_AssetNodeEditor = null
-var serializer: CHANE_HyAssetNodeSerializer
 
 var parsed_has_no_positions: = false
 var loaded: = false
@@ -37,8 +36,7 @@ var all_meta: Dictionary = {}
 var an_lookup: Dictionary[String, HyAssetNode] = {}
 
 var more_type_names: Array[String] = [
-    "Single",
-    "Multi",
+    "Test",
 ]
 var type_id_lookup: Dictionary[String, int] = {}
 
@@ -95,15 +93,7 @@ var settings_menu_menu: PopupMenu = null
 
 var unedited: = true
 
-func get_unique_an_id(id_prefix: String = "") -> String:
-    return CHANE_HyAssetNodeSerializer.get_unique_an_id(id_prefix)
-
 func _ready() -> void:
-    print("a sentence with spaces".replace(" ", "_"))
-    serializer = CHANE_HyAssetNodeSerializer.new()
-    serializer.name = "ANSerializer"
-    add_child(serializer, true)
-
     assert(popup_menu_root != null, "Popup menu root is not set, please set it in the inspector")
     
     focus_exited.connect(on_focus_exited)
@@ -153,18 +143,27 @@ func setup_graph_edit_connection_types() -> void:
     for extra_type_name in more_type_names:
         var type_idx: = type_names.size()
         type_names[type_idx] = extra_type_name
-        #add_valid_left_disconnect_type(type_idx)
 
-    type_names[type_names.size()] = "Unknown"
+    var unknown_type_id: = type_names.size()
+    type_names[unknown_type_id] = "Unknown"
+    add_valid_connection_type(unknown_type_id, unknown_type_id)
     
     for val_type_name in SchemaManager.schema.value_types:
-        var val_type_idx: = type_names.size()
-        type_names[val_type_idx] = val_type_name
-        add_valid_connection_type(val_type_idx, val_type_idx)
-        #add_valid_left_disconnect_type(val_type_idx)
+        for i in 2:
+            var val_type_idx: = type_names.size()
+            type_names[val_type_idx] = val_type_name if i == 0 else val_type_name + "::Single"
+            add_valid_connection_type(val_type_idx, val_type_idx)
+            add_valid_connection_type(val_type_idx, unknown_type_id)
+            add_valid_connection_type(unknown_type_id, val_type_idx)
+            if i == 1:
+                add_valid_left_disconnect_type(val_type_idx)
 
     for type_id in type_names.keys():
         type_id_lookup[type_names[type_id]] = type_id
+
+func get_name_of_connection_type_id(type_id: int) -> String:
+    var type_name: String = type_names[type_id]
+    return type_name.replace("::Single", "")
 
 func get_left_type_of_conn_info(connection_info: Dictionary) -> String:
     var unknown_connection_type: int = type_id_lookup["Unknown"]
@@ -172,7 +171,7 @@ func get_left_type_of_conn_info(connection_info: Dictionary) -> String:
     var raw_type: int = left_gn.get_slot_type_right(connection_info["from_port"])
     if raw_type <= unknown_connection_type:
         return ""
-    return type_names[raw_type]
+    return get_name_of_connection_type_id(raw_type)
 
 func get_right_type_of_conn_info(connection_info: Dictionary) -> String:
     var unknown_connection_type: int = type_id_lookup["Unknown"]
@@ -180,7 +179,7 @@ func get_right_type_of_conn_info(connection_info: Dictionary) -> String:
     var raw_type: int = right_gn.get_slot_type_left(connection_info["to_port"])
     if raw_type <= unknown_connection_type:
         return ""
-    return type_names[raw_type]
+    return get_name_of_connection_type_id(raw_type)
 
 func get_type_of_conn_info(connection_info: Dictionary) -> String:
     var left_type: String = get_left_type_of_conn_info(connection_info)
@@ -334,9 +333,9 @@ func duplicate_and_add_asset_node(asset_node: HyAssetNode, new_gn: GraphNode = n
     var id_prefix: String = SchemaManager.schema.get_id_prefix_for_node_type(asset_node.an_type)
     if not asset_node.an_node_id:
         push_warning("The asset node being duplicated had no ID")
-        asset_node.an_node_id = get_unique_an_id(id_prefix)
+        asset_node.an_node_id = CHANE_HyAssetNodeSerializer.get_unique_an_id(id_prefix)
     
-    var new_id_for_copy: = get_unique_an_id(id_prefix)
+    var new_id_for_copy: = CHANE_HyAssetNodeSerializer.get_unique_an_id(id_prefix)
     var asset_node_copy: = asset_node.get_shallow_copy(new_id_for_copy)
     editor.register_asset_node(asset_node_copy)
     floating_tree_roots.append(asset_node_copy)
@@ -2037,11 +2036,11 @@ func deserialize_and_add_group_and_attach_graph_nodes(group_data: Dictionary) ->
     return new_group
 
 func _get_deserialized_group(group_data: Dictionary, use_json_pos_scale: bool, relative_to_screen_center: bool) -> GraphFrame:
-    serializer.serialized_pos_scale = json_positions_scale if use_json_pos_scale else Vector2.ONE
-    serializer.serialized_pos_offset = relative_root_position
+    editor.serializer.serialized_pos_scale = json_positions_scale if use_json_pos_scale else Vector2.ONE
+    editor.serializer.serialized_pos_offset = relative_root_position
     if relative_to_screen_center:
-        serializer.serialized_pos_offset = local_pos_to_pos_offset(get_viewport().get_visible_rect().size / 2)
-    return serializer.deserialize_group(group_data)
+        editor.serializer.serialized_pos_offset = local_pos_to_pos_offset(get_viewport().get_visible_rect().size / 2)
+    return editor.serializer.deserialize_group(group_data)
             
 func deserialize_and_add_group(group_data: Dictionary, use_json_pos_scale: bool, relative_to_screen_center: bool) -> GraphFrame:
     var new_group: = _get_deserialized_group(group_data, use_json_pos_scale, relative_to_screen_center)

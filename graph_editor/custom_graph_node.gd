@@ -85,8 +85,9 @@ func update_slot_types(type_id_lookup: Dictionary[String, int]) -> void:
         if not is_slot_enabled_right(conn_slot):
             prints("Uh oh, connection %s (slot %d) is not enabled" % [conn_idx, conn_slot])
         var conn_value_type: String = node_type_schema["connections"][conn_names[conn_idx]].get("value_type", "")
+        var zero_if_multi: int = 0 if node_type_schema["connections"][conn_names[conn_idx]].get("multi", false) else 1
         if conn_value_type:
-            set_connection_port_type(conn_idx, type_id_lookup[conn_value_type])
+            set_connection_port_type(conn_idx, type_id_lookup[conn_value_type] + zero_if_multi)
 
 func update_enabled_slots() -> void:
     var slot_idx: int = 0
