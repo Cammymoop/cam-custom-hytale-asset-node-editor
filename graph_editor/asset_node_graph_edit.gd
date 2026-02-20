@@ -689,7 +689,7 @@ func _paste_request_at(paste_local_pos: Vector2, paste_screen_relative: bool = f
 func paste_from_external() -> void:
     var old_json_scale: = json_positions_scale
     json_positions_scale = Vector2.ONE
-    var an_roots: Array[HyAssetNode] = editor.get_an_roots_within_set(copied_external_ans)
+    var an_roots: Array[HyAssetNode] = CHANE_AssetNodeEditor.get_an_roots_within_set(copied_external_ans, {})
     floating_tree_roots.append_array(an_roots)
     var added_ges: = editor.add_graph_nodes_for_new_asset_node_trees(self, an_roots, get_center_pos_offset())
     json_positions_scale = old_json_scale
@@ -743,7 +743,7 @@ func _add_pasted_nodes(ges: Array[GraphElement], asset_node_set: Array[HyAssetNo
     if not make_duplicates:
         # TODO: Make a out of tree node set container helper thing to better handle keeping these around or just change functionality
         # so that any paste that isn't able to be duplicated from existing nodes goes through the serialization/deserialization process instead
-        var pasted_an_roots: Array[HyAssetNode] = editor.get_an_roots_within_set(asset_node_set)
+        var pasted_an_roots: Array[HyAssetNode] = CHANE_AssetNodeEditor.get_an_roots_within_set(asset_node_set, {})
         floating_tree_roots.append_array(pasted_an_roots)
         pasted_ges = ges
         for ge in ges:

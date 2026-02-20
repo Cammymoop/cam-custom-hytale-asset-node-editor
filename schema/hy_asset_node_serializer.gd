@@ -488,7 +488,7 @@ func setup_base_info_and_settings(asset_node: HyAssetNode, node_data: Dictionary
             else:
                 asset_node.settings[setting_name] = parse_individual_setting_data(node_data[setting_name], gd_type)
 
-func deserialize_group(group_data: Dictionary) -> GraphFrame:
+func deserialize_group(group_data: Dictionary, new_name_func: Callable = Callable()) -> GraphFrame:
     var new_group: = GraphFrame.new()
 
     var raw_size: = Vector2(group_data.get(MetadataKeys.GroupWidth, 0), group_data.get(MetadataKeys.GroupHeight, 0))
@@ -505,7 +505,16 @@ func deserialize_group(group_data: Dictionary) -> GraphFrame:
     if chane_data and chane_data.has(MetadataKeys.CHANEGroupAccentColor):
         new_group.set_meta("has_custom_color", true)
         new_group.set_meta("custom_color_name", chane_data[MetadataKeys.CHANEGroupAccentColor])
+    
+    if new_name_func.is_valid():
+        new_group.name = new_name_func.call()
     return new_group
+
+func deserialize_groups(from_metadata: Array, new_name_func: Callable = Callable()) -> Array[GraphFrame]:
+    var groups: Array[GraphFrame] = []
+    for group_data in from_metadata:
+        groups.append(deserialize_group(group_data, new_name_func))
+    return groups
 
 func deserialize_node_position(node_metadata: Dictionary) -> Vector2:
     var pos_meta: Dictionary = node_metadata.get(MetadataKeys.NodeMetaPosition, {})

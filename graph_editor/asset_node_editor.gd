@@ -884,3 +884,36 @@ func is_workspace_id_compatible(workspace_id: String) -> bool:
     possible_workspaces.append_array(SchemaManager.schema.workspace_no_output_types.keys())
     
     return possible_workspaces.has(workspace_id)
+
+func get_gn_included_asset_nodes(gn: CustomGraphNode) -> Array[HyAssetNode]:
+    if gn_is_special(gn):
+        return gn.get_own_asset_nodes()
+    else:
+        return [get_gn_main_asset_node(gn)]
+
+func get_included_asset_nodes_for_ges(ges: Array[GraphElement]) -> Array[HyAssetNode]:
+    var included_asset_nodes: Array[HyAssetNode] = []
+    for ge in ges:
+        if ge is CustomGraphNode:
+            included_asset_nodes.append_array(get_gn_included_asset_nodes(ge))
+    return included_asset_nodes
+
+func remove_graph_elements_from_graphs(ges: Array[GraphElement]) -> void:
+    for ge in ges:
+        ge.get_parent().remove_child(ge)
+
+func get_new_group_name() -> String:
+    return graph_node_factory.new_graph_node_name("Group")
+
+func make_duplicate_group(group: GraphFrame) -> GraphFrame:
+    var serialized_group: = serializer.serialize_group(group)
+    var copy: = serializer.deserialize_group(serialized_group, get_new_group_name)
+    copy.name = graph_node_factory.new_graph_node_name("Group")
+    return copy
+
+func get_duplicate_group_set(groups: Array) -> Array[GraphFrame]:
+    var serialized_groups: = serializer.serialize_groups(groups)
+    var groups_copy: = serializer.deserialize_groups(serialized_groups, get_new_group_name)
+    for group in groups_copy:
+        group.name = graph_node_factory.new_graph_node_name("Group")
+    return groups_copy

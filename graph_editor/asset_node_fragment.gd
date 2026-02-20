@@ -31,6 +31,34 @@ static func new_for_editor(for_editor: CHANE_AssetNodeEditor, with_fragment_id: 
     new_fragment.source_description = "CamHytaleANE:%s" % Util.get_plain_version()
     return new_fragment
 
+func load_editor_selection(as_cut: bool, from_editor: CHANE_AssetNodeEditor = null) -> bool:
+    if has_node_tree() or serialized_data:
+        push_error("Fragment alerady has data, create a new fragment to load nodes from editor")
+        return false
+    if from_editor:
+        gd_nodes_are_for_editor = from_editor
+    var editor: = gd_nodes_are_for_editor
+    var current_graph: = editor.focused_graph
+
+    var selected_elements: Array[GraphElement] = current_graph.get_selected_ges()
+    if selected_elements.size() == 0:
+        push_warning("No selected elements to load into new fragment from editor")
+        return false
+    
+    var included_asset_nodes: = editor.get_included_asset_nodes_for_ges(selected_elements)
+    gd_node_tree = FragmentRoot.new()
+    if as_cut:
+        gd_node_tree.take_asset_nodes_from_editor(editor, included_asset_nodes)
+        editor.remove_graph_elements_from_graphs(selected_elements)
+        add_gd_nodes_to_fragment_root(selected_elements)
+    else:
+        gd_node_tree.get_duplicate_an_set_from_editor(editor, included_asset_nodes)
+        create_new_graph_nodes_in_fragment_root()
+        var duplicate_groups: = editor.get_duplicate_group_set(Util.engine_class_filtered(selected_elements, "GraphFrame"))
+        add_gd_nodes_to_fragment_root(duplicate_groups)
+    
+    return true
+
 func has_node_tree() -> bool:
     return gd_node_tree != null and is_instance_valid(gd_node_tree)
 
@@ -67,6 +95,7 @@ func disown_nodes() -> void:
     gd_node_tree = null
 
 func discard_nodes() -> void:
+    gd_nodes_are_for_editor = null
     gd_node_tree.queue_free()
     gd_node_tree = null
 
@@ -143,6 +172,7 @@ func _serialize_metadata() -> Dictionary:
     return included_metadata
 
 func _deserialize_data() -> bool:
+    const MetadataKeys: = CHANE_HyAssetNodeSerializer.MetadataKeys
     assert(gd_nodes_are_for_editor, "Editor context is required to deserialize data")
     var editor: = gd_nodes_are_for_editor
 
@@ -160,32 +190,52 @@ func _deserialize_data() -> bool:
         return false
     
     var serializer: = editor.serializer
-    var editor_metadata: = data.get("inlcuded_metadata", {}).get(CHANE_HyAssetNodeSerializer.MetadataKeys.NodeEditorMetadata, {}) as Dictionary
+    var editor_metadata: = data.get("inlcuded_metadata", {}).get(MetadataKeys.NodeEditorMetadata, {}) as Dictionary
     var graph_result: = serializer.deserialize_fragment_as_full_graph(data.get("asset_node_data", []), editor_metadata)
     if not graph_result.success:
         return false
+
+    var all_groups_data: Array = data.get(MetadataKeys.NodeEditorMetadata, {}).get(MetadataKeys.Groups, [])
+    var new_groups: Array[GraphFrame] = serializer.deserialize_groups(all_groups_data, editor.get_new_group_name)
     
-    var fragment_root: = FragmentRoot.new()
-    fragment_root.asset_nodes_from_graph_parse_result(graph_result)
+    gd_node_tree = FragmentRoot.new()
+    gd_node_tree.asset_nodes_from_graph_parse_result(graph_result)
     
-    var an_roots: Array[HyAssetNode] = fragment_root.get_an_tree_roots()
+    create_new_graph_nodes_in_fragment_root()
+    add_gd_nodes_to_fragment_root(new_groups)
+
+    return true
+    
+func create_new_graph_nodes_in_fragment_root() -> Array[GraphElement]:
+    var added_graph_elements: Array[GraphElement] = []
+
+    var an_roots: Array[HyAssetNode] = gd_node_tree.get_an_tree_roots()
     var new_graph_nodes_by_asset_node: Dictionary[HyAssetNode, CustomGraphNode] = {}
     #var all_connections: Array[Dictionary] = []
-    var all_graph_elements: Array[GraphElement] = []
+    
+    var editor: = gd_nodes_are_for_editor
 
     for tree_root in an_roots:
-        var tree_new: = editor.new_graph_nodes_for_tree(tree_root, Vector2.ZERO, graph_result.asset_node_aux_data)
+        var tree_new: = editor.new_graph_nodes_for_tree(tree_root, Vector2.ZERO, gd_node_tree.asset_node_aux_data)
         new_graph_nodes_by_asset_node.merge(tree_new)
 
         var unique_graph_elements: Array[GraphElement] = []
         for ge in tree_new.values():
             if not unique_graph_elements.has(ge):
                 unique_graph_elements.append(ge)
-        all_graph_elements.append_array(unique_graph_elements)
-        
-        #all_connections.append_array(editor.get_new_gn_connections(tree_new[tree_root], tree_new))
+        added_graph_elements.append_array(unique_graph_elements)
     
-    return true
+    add_gd_nodes_to_fragment_root(added_graph_elements)
+        
+    return added_graph_elements
+
+func add_gd_nodes_to_fragment_root(graph_elements: Array) -> void:
+    assert(has_node_tree(), "Fragment root is required to add GD nodes to")
+    
+    for ge in graph_elements:
+        if not ge is GraphElement:
+            continue
+        gd_node_tree.add_child(ge, true)
 
 func check_compatible_workspace(workspace_id: String) -> bool:
     return gd_nodes_are_for_editor.is_workspace_id_compatible(workspace_id)
