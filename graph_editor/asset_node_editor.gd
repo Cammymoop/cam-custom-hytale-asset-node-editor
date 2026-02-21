@@ -6,6 +6,9 @@ const AssetNodeFileHelper = preload("./asset_node_file_helper.gd")
 const SpecialGNFactory = preload("res://graph_editor/custom_graph_nodes/special_gn_factory.gd")
 const GraphNodeFactory = preload("res://graph_editor/custom_graph_nodes/graph_node_factory.gd")
 
+const Fragment: = preload("res://graph_editor/asset_node_fragment.gd")
+const FragmentRoot: = preload("res://graph_editor/fragment_root.gd")
+
 const UndoManager = preload("res://graph_editor/undo_redo/undo_manager.gd")
 
 enum ContextMenuItems {
@@ -453,6 +456,15 @@ func create_single_duplicate_asset_node(asset_node: HyAssetNode) -> HyAssetNode:
 
 func get_an_roots_within_registered_set(asset_node_set: Array[HyAssetNode]) -> Array[HyAssetNode]:
     return get_an_roots_within_set(asset_node_set, asset_node_aux_data)
+
+static func get_an_roots_within_set_no_aux(asset_node_set: Array[HyAssetNode]) -> Array[HyAssetNode]:
+    var temp_aux: Dictionary[String, HyAssetNode.AuxData] = {}
+    for asset_node in asset_node_set:
+        temp_aux[asset_node.an_node_id] = HyAssetNode.AuxData.new()
+    for asset_node in asset_node_set:
+        for child_an in asset_node.get_all_connected_nodes():
+            temp_aux[child_an.an_node_id].output_to_node_id = asset_node.an_node_id
+    return get_an_roots_within_set(asset_node_set, temp_aux)
 
 static func get_an_roots_within_set(asset_node_set: Variant, associated_aux: Dictionary[String, HyAssetNode.AuxData]) -> Array[HyAssetNode]:
     var root_ans: Array[HyAssetNode] = []
@@ -917,3 +929,6 @@ func get_duplicate_group_set(groups: Array) -> Array[GraphFrame]:
     for group in groups_copy:
         group.name = graph_node_factory.new_graph_node_name("Group")
     return groups_copy
+
+func insert_fragment_into_graph(fragment: Fragment, graph: CHANE_AssetNodeGraphEdit, at_pos_offset: Vector2) -> void:
+    pass

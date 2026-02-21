@@ -1,11 +1,12 @@
-class_name CHANE_AssetNodeFragment
 extends Object
 
-const FragmentRoot: = preload("res://graph_editor/fragment_root.gd")
+const Fragment: = preload("./asset_node_fragment.gd")
+const FragmentRoot: = preload("./fragment_root.gd")
 
 var format_version: int = 1
 
 var fragment_id: String
+var is_cut_fragment: bool = false
 var source_description: String
 
 var gd_node_tree: FragmentRoot
@@ -17,18 +18,27 @@ var context_data: Dictionary[String, Variant] = {}
 static func get_new_fragment_id() -> String:
     return Util.random_str(16)
 
-static func new_from_string(fragment_string: String, source_desc: String, with_fragment_id: String = "") -> CHANE_AssetNodeFragment:
-    var new_fragment: = CHANE_AssetNodeFragment.new()
+static func new_from_string(fragment_string: String, source_desc: String, with_fragment_id: String = "") -> Fragment:
+    var new_fragment: = new()
     new_fragment.fragment_id = with_fragment_id if with_fragment_id else get_new_fragment_id()
     new_fragment.source_description = source_desc
     new_fragment.serialized_data = fragment_string
     return new_fragment
 
-static func new_for_editor(for_editor: CHANE_AssetNodeEditor, with_fragment_id: String = "") -> CHANE_AssetNodeFragment:
-    var new_fragment: = CHANE_AssetNodeFragment.new()
+static func new_for_editor(for_editor: CHANE_AssetNodeEditor, with_fragment_id: String = "") -> Fragment:
+    var new_fragment: = new()
     new_fragment.fragment_id = with_fragment_id if with_fragment_id else get_new_fragment_id()
     new_fragment.gd_nodes_are_for_editor = for_editor
     new_fragment.source_description = "CamHytaleANE:%s" % Util.get_plain_version()
+    return new_fragment
+
+static func new_duplicate_fragment(fragment: Fragment) -> Fragment:
+    var new_fragment: Fragment
+    if fragment.has_node_tree():
+        new_fragment = new_for_editor(fragment.gd_nodes_are_for_editor)
+        fragment._duplicate_to(new_fragment)
+    else:
+        new_fragment = new_from_string(fragment.serialized_data, fragment.source_description)
     return new_fragment
 
 func load_editor_selection(as_cut: bool, from_editor: CHANE_AssetNodeEditor = null) -> bool:
@@ -44,6 +54,8 @@ func load_editor_selection(as_cut: bool, from_editor: CHANE_AssetNodeEditor = nu
     if selected_elements.size() == 0:
         push_warning("No selected elements to load into new fragment from editor")
         return false
+
+    is_cut_fragment = as_cut
     
     var included_asset_nodes: = editor.get_included_asset_nodes_for_ges(selected_elements)
     gd_node_tree = FragmentRoot.new()
@@ -56,6 +68,8 @@ func load_editor_selection(as_cut: bool, from_editor: CHANE_AssetNodeEditor = nu
         create_new_graph_nodes_in_fragment_root()
         var duplicate_groups: = editor.get_duplicate_group_set(Util.engine_class_filtered(selected_elements, "GraphFrame"))
         add_gd_nodes_to_fragment_root(duplicate_groups)
+    
+    gd_node_tree.recenter_graph_elements()
     
     return true
 
@@ -77,10 +91,11 @@ func get_all_included_asset_nodes() -> Array[HyAssetNode]:
 func get_gd_nodes(for_editor: CHANE_AssetNodeEditor, disown: bool = true) -> Node:
     var editor_matches: = gd_nodes_are_for_editor != null and for_editor == gd_nodes_are_for_editor
     if has_node_tree() and not editor_matches:
-        if not serialized_data:
-            _create_serialized_data(for_editor)
-        if not _make_nodes(for_editor):
-            return null
+        return null
+        #if not serialized_data:
+            #_create_serialized_data(for_editor)
+        #if not _make_nodes(for_editor):
+            #return null
     elif not has_node_tree():
         if not _make_nodes(for_editor):
             return null
@@ -122,9 +137,6 @@ func _create_serialized_data(from_editor: CHANE_AssetNodeEditor = null) -> bool:
         push_error("No editor context to create serialized data from")
         return false
     
-    return _do_serialize()
-
-func _do_serialize() -> bool:
     var serializer: = gd_nodes_are_for_editor.serializer
 
     var asset_node_data: Array[Dictionary] = []
@@ -240,6 +252,13 @@ func add_gd_nodes_to_fragment_root(graph_elements: Array) -> void:
 func check_compatible_workspace(workspace_id: String) -> bool:
     return gd_nodes_are_for_editor.is_workspace_id_compatible(workspace_id)
 
+func _duplicate_to(other: Fragment) -> void:
+    other.source_description = source_description
+    other.gd_node_tree = gd_node_tree.get_duplicate()
+    other.create_new_graph_nodes_in_fragment_root()
+    var duplicated_groups: = gd_nodes_are_for_editor.get_duplicate_group_set(Util.engine_class_filtered(gd_node_tree.get_all_graph_elements(), "GraphFrame"))
+    other.add_gd_nodes_to_fragment_root(duplicated_groups)
+    other.context_data = context_data.duplicate(true)
 
 func _notification(what: int) -> void:
     if what == NOTIFICATION_PREDELETE:

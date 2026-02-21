@@ -1,5 +1,7 @@
 extends Node
 
+const FragmentRoot: = preload("./fragment_root.gd")
+
 var all_asset_nodes: Dictionary[String, HyAssetNode] = {}
 var asset_node_aux_data: Dictionary[String, HyAssetNode.AuxData] = {}
 
@@ -23,6 +25,20 @@ func get_duplicate_an_set_from_editor(editor: CHANE_AssetNodeEditor, asset_node_
     
     for an in duplicate_ans:
         all_asset_nodes[an.an_node_id] = an
+
+func reroll_asset_node_ids() -> void:
+    var new_ids: Dictionary[String, String] = {}
+    for old_id in all_asset_nodes.keys():
+        new_ids[old_id] = CHANE_HyAssetNodeSerializer.reroll_an_id(old_id)
+
+    for old_id in all_asset_nodes.keys():
+        all_asset_nodes[old_id].an_node_id = new_ids[old_id]
+        all_asset_nodes[new_ids[old_id]] = all_asset_nodes[old_id]
+        all_asset_nodes.erase(old_id)
+        if asset_node_aux_data[old_id].output_to_node_id:
+            asset_node_aux_data[old_id].output_to_node_id = new_ids[asset_node_aux_data[old_id].output_to_node_id]
+        asset_node_aux_data[new_ids[old_id]] = asset_node_aux_data[old_id]
+        asset_node_aux_data.erase(old_id)
 
 func asset_nodes_from_graph_parse_result(graph_result: CHANE_HyAssetNodeSerializer.EntireGraphParseResult) -> void:
     asset_node_aux_data = graph_result.asset_node_aux_data.duplicate()
@@ -54,3 +70,17 @@ func _collect_graph_elements_recurse(at_node: Node, all_graph_elements: Array[Gr
         all_graph_elements.append(at_node)
     for child in at_node.get_children():
         _collect_graph_elements_recurse(child, all_graph_elements)
+
+func recenter_graph_elements() -> void:
+    var all_graph_elements: = get_all_graph_elements()
+    var avg_center: = Util.average_graph_element_pos_offset(all_graph_elements)
+    for ge in all_graph_elements:
+        ge.position_offset -= avg_center
+
+func get_duplicate() -> FragmentRoot:
+    var copy: = FragmentRoot.new()
+    copy.all_asset_nodes = all_asset_nodes.duplicate_deep()
+    for an_id in all_asset_nodes.keys():
+        copy.asset_node_aux_data[an_id] = asset_node_aux_data[an_id].duplicate(true)
+    copy.reroll_asset_node_ids()
+    return copy
