@@ -1,4 +1,4 @@
-extends Object
+extends RefCounted
 
 const Fragment: = preload("./asset_node_fragment.gd")
 const FragmentRoot: = preload("./fragment_root.gd")
@@ -36,42 +36,61 @@ static func new_duplicate_fragment(fragment: Fragment) -> Fragment:
     var new_fragment: Fragment
     if fragment.has_node_tree():
         new_fragment = new_for_editor(fragment.gd_nodes_are_for_editor)
-        fragment._duplicate_to(new_fragment)
+        fragment._duplicate_to(new_fragment, true)
     else:
         new_fragment = new_from_string(fragment.serialized_data, fragment.source_description)
     return new_fragment
 
 func load_editor_selection(as_cut: bool, from_editor: CHANE_AssetNodeEditor = null) -> bool:
+    if from_editor:
+        gd_nodes_are_for_editor = from_editor
+    var selected_ges: Array[GraphElement] = gd_nodes_are_for_editor.get_selected_ges()
+    return load_graph_elements(selected_ges, gd_nodes_are_for_editor.focused_graph, as_cut)
+    
+func load_graph_elements(graph_elements: Array[GraphElement], from_graph: CHANE_AssetNodeGraphEdit, as_cut: bool) -> bool:
+    if not gd_nodes_are_for_editor:
+        push_error("No editor context while loading graph elements into fragment")
+        return false
     if has_node_tree() or serialized_data:
         push_error("Fragment alerady has data, create a new fragment to load nodes from editor")
         return false
-    if from_editor:
-        gd_nodes_are_for_editor = from_editor
     var editor: = gd_nodes_are_for_editor
-    var current_graph: = editor.focused_graph
 
-    var selected_elements: Array[GraphElement] = current_graph.get_selected_ges()
-    if selected_elements.size() == 0:
-        push_warning("No selected elements to load into new fragment from editor")
+    if graph_elements.size() == 0:
+        push_warning("No provided elements to load into new fragment from editor")
         return false
 
     is_cut_fragment = as_cut
     
-    var included_asset_nodes: = editor.get_included_asset_nodes_for_ges(selected_elements)
+    var included_asset_nodes: = editor.get_included_asset_nodes_for_ges(graph_elements)
+    context_data["hanging_connections"] = editor.get_hanging_an_connections_for_ges(graph_elements, from_graph)
+
     gd_node_tree = FragmentRoot.new()
     if as_cut:
         gd_node_tree.take_asset_nodes_from_editor(editor, included_asset_nodes)
-        editor.remove_graph_elements_from_graphs(selected_elements)
-        add_gd_nodes_to_fragment_root(selected_elements)
+        editor.remove_graph_elements_from_graphs(graph_elements)
+        add_gd_nodes_to_fragment_root(graph_elements)
     else:
         gd_node_tree.get_duplicate_an_set_from_editor(editor, included_asset_nodes)
         create_new_graph_nodes_in_fragment_root()
-        var duplicate_groups: = editor.get_duplicate_group_set(Util.engine_class_filtered(selected_elements, "GraphFrame"))
+        var duplicate_groups: = editor.get_duplicate_group_set(Util.engine_class_filtered(graph_elements, "GraphFrame"))
         add_gd_nodes_to_fragment_root(duplicate_groups)
     
-    gd_node_tree.recenter_graph_elements()
+    set_from_graph_pos(gd_node_tree.recenter_graph_elements())
     
     return true
+
+func set_from_graph_pos(from_graph_pos: Vector2) -> void:
+    context_data["from_graph_pos"] = JSON.from_native(from_graph_pos)
+
+func get_from_graph_pos() -> Vector2:
+    if not has_node_tree():
+        push_error("No node tree to get from graph pos from")
+        return Vector2.ZERO
+
+    if not context_data.has("from_graph_pos"):
+        return Vector2.ZERO
+    return JSON.to_native(context_data["from_graph_pos"])
 
 func has_node_tree() -> bool:
     return gd_node_tree != null and is_instance_valid(gd_node_tree)
@@ -88,22 +107,38 @@ func get_all_included_asset_nodes() -> Array[HyAssetNode]:
         return []
     return gd_node_tree.get_all_asset_nodes()
 
-func get_gd_nodes(for_editor: CHANE_AssetNodeEditor, disown: bool = true) -> Node:
-    var editor_matches: = gd_nodes_are_for_editor != null and for_editor == gd_nodes_are_for_editor
-    if has_node_tree() and not editor_matches:
+## Gets a new set of GraphElement Nodes attached to a FragmentRoot which contains a new set of HyAssetNodes
+## Unless this is a fragment created as a Cut, or to hold deleted nodes for undoing later, the returned Asset Nodes will always have a new set of Node IDs
+## Note: The fragment owns the reference to the Godot Nodes and will free them when it's gone, so we only ever return duplicated instances for use elsewhere
+func get_gd_nodes_copy(for_editor: CHANE_AssetNodeEditor = null) -> FragmentRoot:
+    if not gd_nodes_are_for_editor:
+        gd_nodes_are_for_editor = for_editor
+    if not gd_nodes_are_for_editor:
+        push_error("No editor context to get fragment nodes")
         return null
-        #if not serialized_data:
-            #_create_serialized_data(for_editor)
-        #if not _make_nodes(for_editor):
-            #return null
-    elif not has_node_tree():
-        if not _make_nodes(for_editor):
+
+    if not has_node_tree():
+        if not _make_nodes(gd_nodes_are_for_editor):
             return null
     
-    var fragment_root_node: = gd_node_tree
-    if disown:
-        disown_nodes()
-    return fragment_root_node
+    return gd_node_tree.get_duplicate(not is_cut_fragment)
+
+func get_consistent_named_gd_nodes(prefix: String, number_starts_at: int) -> FragmentRoot:
+    var new_copy: = get_gd_nodes_copy()
+    var all_ges: = new_copy.get_all_graph_elements()
+    for i in all_ges.size():
+        all_ges[i].name = "%s--%d" % [prefix, number_starts_at + i]
+    return new_copy
+
+func get_num_gd_nodes() -> int:
+    if not gd_nodes_are_for_editor:
+        push_error("No editor context to get number of GD nodes from")
+        return 0
+    if not has_node_tree():
+        if not _make_nodes(gd_nodes_are_for_editor):
+            return 0
+    return gd_node_tree.num_graph_elements()
+
 
 func disown_nodes() -> void:
     gd_nodes_are_for_editor = null
@@ -222,14 +257,12 @@ func create_new_graph_nodes_in_fragment_root() -> Array[GraphElement]:
     var added_graph_elements: Array[GraphElement] = []
 
     var an_roots: Array[HyAssetNode] = gd_node_tree.get_an_tree_roots()
-    var new_graph_nodes_by_asset_node: Dictionary[HyAssetNode, CustomGraphNode] = {}
     #var all_connections: Array[Dictionary] = []
     
     var editor: = gd_nodes_are_for_editor
 
     for tree_root in an_roots:
         var tree_new: = editor.new_graph_nodes_for_tree(tree_root, Vector2.ZERO, gd_node_tree.asset_node_aux_data)
-        new_graph_nodes_by_asset_node.merge(tree_new)
 
         var unique_graph_elements: Array[GraphElement] = []
         for ge in tree_new.values():
@@ -252,16 +285,17 @@ func add_gd_nodes_to_fragment_root(graph_elements: Array) -> void:
 func check_compatible_workspace(workspace_id: String) -> bool:
     return gd_nodes_are_for_editor.is_workspace_id_compatible(workspace_id)
 
-func _duplicate_to(other: Fragment) -> void:
+func _duplicate_to(other: Fragment, reroll_ids: bool) -> void:
     other.source_description = source_description
-    other.gd_node_tree = gd_node_tree.get_duplicate()
+    other.gd_node_tree = gd_node_tree.get_duplicate(reroll_ids)
     other.create_new_graph_nodes_in_fragment_root()
     var duplicated_groups: = gd_nodes_are_for_editor.get_duplicate_group_set(Util.engine_class_filtered(gd_node_tree.get_all_graph_elements(), "GraphFrame"))
     other.add_gd_nodes_to_fragment_root(duplicated_groups)
     other.context_data = context_data.duplicate(true)
 
+# When a fragment is freed, free the Godot Nodes as well (which are not ref-counted) if there are any
 func _notification(what: int) -> void:
     if what == NOTIFICATION_PREDELETE:
-        if gd_node_tree and is_instance_valid(gd_node_tree):
+        if gd_node_tree:
             gd_node_tree.queue_free()
             gd_node_tree = null

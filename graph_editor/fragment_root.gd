@@ -71,16 +71,21 @@ func _collect_graph_elements_recurse(at_node: Node, all_graph_elements: Array[Gr
     for child in at_node.get_children():
         _collect_graph_elements_recurse(child, all_graph_elements)
 
-func recenter_graph_elements() -> void:
+func recenter_graph_elements() -> Vector2:
     var all_graph_elements: = get_all_graph_elements()
     var avg_center: = Util.average_graph_element_pos_offset(all_graph_elements)
     for ge in all_graph_elements:
         ge.position_offset -= avg_center
+    return avg_center
 
-func get_duplicate() -> FragmentRoot:
+func get_duplicate(reroll_ids: bool) -> FragmentRoot:
     var copy: = FragmentRoot.new()
     copy.all_asset_nodes = all_asset_nodes.duplicate_deep()
     for an_id in all_asset_nodes.keys():
         copy.asset_node_aux_data[an_id] = asset_node_aux_data[an_id].duplicate(true)
-    copy.reroll_asset_node_ids()
+    if reroll_ids:
+        copy.reroll_asset_node_ids()
     return copy
+
+func num_graph_elements() -> int:
+    return get_all_graph_elements().size()

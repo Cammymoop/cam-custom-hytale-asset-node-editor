@@ -26,7 +26,6 @@ var root_node: HyAssetNode = null
 @export var popup_menu_root: PopupMenuRoot
 
 var asset_node_meta: Dictionary[String, Dictionary] = {}
-var all_meta: Dictionary = {}
 
 
 var an_lookup: Dictionary[String, HyAssetNode] = {}
@@ -540,21 +539,6 @@ func duplicate_selected_ges() -> void:
     _copy_request()
     _paste_request()
 
-func discard_copied_nodes() -> void:
-    copied_nodes.clear()
-    copied_nodes_ans.clear()
-    copied_nodes_internal_connections.clear()
-    clipboard_was_from_external = false
-
-    for an in copied_external_ans:
-        if an and an.an_node_id and an.an_node_id not in all_asset_node_ids:
-            if an.an_node_id in asset_node_meta:
-                asset_node_meta.erase(an.an_node_id)
-    copied_external_ans.clear()
-    copied_external_node_metadata.clear()
-    copied_external_groups.clear()
-    in_graph_copy_id = ""
-
 func _cut_request() -> void:
     _cut_refs(get_selected_ges())
 
@@ -584,8 +568,6 @@ func _copy_request() -> void:
 func _copy_or_cut_ges(ges: Array[GraphElement]) -> void:
     if ges.size() == 0:
         return
-    if copied_nodes:
-        discard_copied_nodes()
     copied_nodes = ges
     save_copied_nodes_internal_connections()
     save_copied_nodes_an_references()
@@ -702,7 +684,7 @@ func paste_from_external() -> void:
     add_nodes_inside_to_groups(added_groups, added_ges, true)
 
     #select_ges(added_ges)
-    discard_copied_nodes()
+    #discard_copied_nodes()
 
 func add_nodes_inside_to_groups(groups: Array[GraphFrame], ges: Array[GraphElement], with_undo: bool, empty_no_shrink: bool = true) -> void:
     var group_rects: Array[Rect2] = []
@@ -811,22 +793,19 @@ func safe_get_an_from_gn(gn: CustomGraphNode, extra_an_list: Array[HyAssetNode] 
             return an
     return null
 
+## Clean up current graph, freeing any Godot Nodes we remove as they would become orphaned otherwise
 func clear_graph() -> void:
-    prints("clearing graph")
     all_asset_nodes.clear()
     all_asset_node_ids.clear()
     floating_tree_roots.clear()
     root_node = null
     an_lookup.clear()
     asset_node_meta.clear()
-    all_meta.clear()
-    _clear_ge_children()
+    cleanup_graph_elements()
     
     cancel_connection_cut()
 
-    discard_copied_nodes()
-
-func _clear_ge_children() -> void:
+func cleanup_graph_elements() -> void:
     for child in get_children():
         if child is GraphElement:
             remove_child(child)
@@ -898,6 +877,18 @@ func get_internal_connections_for_gns(gns: Array[CustomGraphNode]) -> Array[Dict
                     internal_connections.append(conn_info)
     return internal_connections
 
+func get_external_connections_for_ges(graph_elements: Array) -> Array[Dictionary]:
+    var ges: Array[GraphElement] = Array(graph_elements, TYPE_OBJECT, &"GraphElement", null)
+    var ge_names: Array[String] = ges.map(func(ge): return ge.name)
+
+    var external_connections: Array[Dictionary] = []
+    for ge in ges:
+        if not ge is CustomGraphNode:
+            continue
+        for conn_info in raw_connections(ge):
+            if int(conn_info["from_node"] in ge_names) ^ int(conn_info["to_node"] in ge_names) == 1:
+                external_connections.append(conn_info)
+    return external_connections
 
 func get_graph_connected_graph_nodes(graph_node: CustomGraphNode, conn_name: String) -> Array[GraphNode]:
     var connected_asset_nodes: Array[HyAssetNode] = get_graph_connected_asset_nodes(graph_node, conn_name)
@@ -1502,6 +1493,32 @@ func undo_redo_add_ges(the_ges: Array[GraphElement]) -> void:
 func undo_redo_remove_ges(the_ges: Array[GraphElement]) -> void:
     for removing_ge in the_ges:
         remove_graph_element_child(removing_ge)
+
+## When GraphElements are removed and fresh copies will be created if undone/redone again, free the current versions
+func undo_redo_delete_ges(ges: Array[GraphElement]) -> void:
+    for ge in ges:
+        remove_graph_element_child(ge)
+        ge.queue_free()
+
+func redo_delete_ges_if_not_committing(ges: Array[GraphElement]) -> void:
+    if editor.undo_manager.undo_redo.is_committing_action():
+        return
+    undo_redo_delete_ges(ges)
+
+func undo_redo_delete_fragment_ges(counter_start: int, num_ges: int) -> void:
+    if editor.undo_manager.undo_redo.is_committing_action():
+        return
+    var ges_to_delete: Array[GraphElement] = []
+    for name_number in range(counter_start, counter_start + num_ges):
+        var child_name: = "%s--%d" % ["FrGE", name_number]
+        var ge_child: = get_node_or_null(NodePath(child_name)) as GraphElement
+        if ge_child:
+            ges_to_delete.append(ge_child)
+    var included_asset_nodes: = editor.get_included_asset_nodes_for_ges(ges_to_delete)
+    editor.remove_asset_nodes(included_asset_nodes)
+    for ge in ges_to_delete:
+        remove_graph_element_child(ge)
+        ge.queue_free()
 
 func sort_all_an_connections() -> void:
     for an in all_asset_nodes:
@@ -2148,7 +2165,7 @@ func add_new_group_pending_title_undo_step(at_pos_offset: Vector2, into_group: G
 
 func create_new_group_with_undo(new_group: GraphFrame, into_group: GraphFrame) -> void:
     var undo_step: = editor.undo_manager.start_or_continue_graph_undo_step("Add New Group", self)
-    undo_step.added_graph_elements.append(new_group)
+    undo_step.created_graph_elements.append(new_group)
     if into_group:
         undo_step.added_group_relations.append({ "group": into_group, "member": new_group })
     editor.undo_manager.commit_if_new()
@@ -2188,6 +2205,15 @@ func get_pos_offset_rect(graph_element: GraphElement) -> Rect2:
 
 func get_popup_pos_at_mouse() -> Vector2i:
     return Util.get_popup_window_pos(get_global_mouse_position())
+
+func add_graph_element_children(graph_elements: Array[GraphElement], with_snap: bool = false) -> void:
+    for graph_element in graph_elements:
+        if graph_element is CustomGraphNode:
+            add_graph_node_child(graph_element, with_snap)
+        else:
+            add_child(graph_element, true)
+            if with_snap:
+                snap_ge(graph_element)
 
 func add_graph_element_child(graph_element: GraphElement, with_snap: bool = false) -> void:
     if graph_element is CustomGraphNode:

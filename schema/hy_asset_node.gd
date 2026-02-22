@@ -1,8 +1,7 @@
 class_name HyAssetNode
 extends Resource
 
-
-class AuxData:
+class AuxData extends RefCounted:
     var position: Vector2 = Vector2.ZERO
     var title: String = ""
     var output_to_node_id: String = ""

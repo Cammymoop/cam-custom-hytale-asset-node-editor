@@ -1,6 +1,7 @@
 ## A class to hold all information needed to undo/redo actions in the Asset Node Editor
 extends RefCounted
 
+const Fragment: = preload("res://graph_editor/asset_node_fragment.gd")
 const GraphUndoStep = preload("res://graph_editor/undo_redo/graph_undo_step.gd")
 
 var editor: CHANE_AssetNodeEditor
@@ -13,6 +14,11 @@ var created_asset_nodes_aux_data: Array[HyAssetNode.AuxData] = []
 var deleted_asset_nodes: Array[HyAssetNode] = []
 var deleted_asset_nodes_aux_data: Array[HyAssetNode.AuxData] = []
 
+var used_fragments: Array[Fragment] = []
+var created_fragments: Array[Fragment] = []
+
+var pasted_asset_nodes: Array[HyAssetNode] = []
+
 var added_asset_node_connections: Array[Dictionary] = []
 var removed_asset_node_connections: Array[Dictionary] = []
 
@@ -20,6 +26,8 @@ var an_settings_changed: Dictionary[String, Dictionary] = {}
 
 var custom_undo_callbacks: Array[Callable] = []
 var custom_redo_callbacks: Array[Callable] = []
+
+var cut_fragment_ids_pasted: Array[String] = []
 
 var has_existing_action: bool = false
 
@@ -67,6 +75,42 @@ func trim_unchanged_settings() -> void:
 
 func get_settings_changed_for_an(an: HyAssetNode) -> Dictionary[String, Dictionary]:
     return an_settings_changed.get(an.an_node_id, Dictionary({}, TYPE_STRING, &"", null, TYPE_DICTIONARY, &"", null))
+
+func paste_fragment(paste_from_fragment: Fragment, into_graph: CHANE_AssetNodeGraphEdit, at_pos_offset: Vector2, with_snap: bool) -> void:
+    used_fragments.append(paste_from_fragment)
+    var num_gd_nodes: = paste_from_fragment.get_num_gd_nodes()
+    var counter_start: = editor.reserve_global_counter_names(num_gd_nodes)
+
+    var graph_undo_step: = get_undo_for_graph(into_graph)
+    var fragment_id: = paste_from_fragment.fragment_id
+
+    graph_undo_step.set_paste_fragment(fragment_id, counter_start, num_gd_nodes, at_pos_offset, with_snap)
+    # Unlike most undo actions, we actually paste the fragment data right away so we can get a list of pasted graph elements and asset nodes,
+    # which we use directly to clean up the paste on undo. _insert_fragment_into_graph checks for if the undo_redo is committing to avoid double pasting.
+    # Repeating the paste will recreate all the same info from scratch, so if it's not a cut fragment then the new asset nodes from redo wont have the same IDs as the original pasted nodes.
+    var new_stuff: = editor._insert_fragment_into_graph(fragment_id, into_graph, at_pos_offset, with_snap, counter_start)
+    graph_undo_step.pasted_fragment_ges.append_array(new_stuff[0])
+    pasted_asset_nodes.append_array(new_stuff[2])
+    if paste_from_fragment.is_cut_fragment:
+        cut_fragment_ids_pasted.append(fragment_id)
+
+func cut_graph_elements_into_fragment(ges_to_cut: Array[GraphElement], from_graph: CHANE_AssetNodeGraphEdit) -> void:
+    var cut_fragment: = Fragment.new_for_editor(editor)
+    created_fragments.append(cut_fragment)
+    editor.fragment_store.register_fragment(cut_fragment)
+    
+    var graph_undo_step: = get_undo_for_graph(from_graph)
+    # Make sure existing connections and group memberships will be restored on undo
+    graph_undo_step.remove_graph_node_conn_infos(editor.get_hanging_ge_connections(ges_to_cut, from_graph))
+    graph_undo_step.remove_group_relations(from_graph.get_graph_elements_cur_group_relations(ges_to_cut))
+    
+    # Reserve numbers for consistent node naming accross undos so I can simply use the names to redo the cut/delete
+    var counter_start: = editor.reserve_global_counter_names(ges_to_cut.size())
+    
+    # Now do the actual cut and set the delete fragment info
+    cut_fragment.load_graph_elements(ges_to_cut, from_graph, true)
+    var from_pos: = cut_fragment.get_from_graph_pos()
+    graph_undo_step.set_delete_fragment(cut_fragment.fragment_id, counter_start, ges_to_cut.size(), from_pos)
 
 func delete_graph_elements(ges_to_delete: Array[GraphElement], in_graph: CHANE_AssetNodeGraphEdit) -> void:
     deleted_asset_nodes.append_array(editor.get_all_owned_asset_nodes(ges_to_delete))
@@ -144,8 +188,24 @@ func _make_action(undo_redo: UndoRedo, merge_mode: UndoRedo.MergeMode) -> void:
 
     undo_redo.add_undo_method(editor.remove_asset_nodes.bind(created_asset_nodes))
     undo_redo.add_do_method(editor.remove_asset_nodes.bind(deleted_asset_nodes))
+
+    undo_redo.add_undo_method(editor.remove_asset_nodes.bind(pasted_asset_nodes))
     
-    prints("committing undo step with execute")
+    if created_fragments.size() > 0:
+        for fragment in created_fragments:
+            undo_redo.add_undo_reference(fragment)
+        # dont keep extra references
+        created_fragments.clear()
+    if used_fragments.size() > 0:
+        for fragment in used_fragments:
+            undo_redo.add_do_reference(fragment)
+        # dont keep extra references
+        used_fragments.clear()
+
+    if cut_fragment_ids_pasted.size() > 0:
+        undo_redo.add_do_method(editor.invalidate_cut_fragments.bind(cut_fragment_ids_pasted))
+    
+    prints("committing undo step %d with execute" % [undo_redo.get_version() + 1])
     
     undo_redo.commit_action(true)
     

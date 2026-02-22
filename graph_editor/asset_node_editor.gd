@@ -8,6 +8,7 @@ const GraphNodeFactory = preload("res://graph_editor/custom_graph_nodes/graph_no
 
 const Fragment: = preload("res://graph_editor/asset_node_fragment.gd")
 const FragmentRoot: = preload("res://graph_editor/fragment_root.gd")
+const FragmentStore: = preload("res://graph_editor/fragment_store.gd")
 
 const UndoManager = preload("res://graph_editor/undo_redo/undo_manager.gd")
 
@@ -51,7 +52,7 @@ var hy_workspace_id: String = ""
 var graphs: Array[CHANE_AssetNodeGraphEdit] = []
 var focused_graph: CHANE_AssetNodeGraphEdit = null
 
-var serializer: CHANE_HyAssetNodeSerializer
+var serializer: = CHANE_HyAssetNodeSerializer.new()
 
 @export var popup_menu_root: PopupMenuRoot
 
@@ -65,6 +66,9 @@ var serializer: CHANE_HyAssetNodeSerializer
 
 var undo_manager: UndoManager = UndoManager.new()
 
+var current_copied_fragment: Fragment = null
+var fragment_store: = FragmentStore.new()
+
 var cur_drop_info: Dictionary = {}
 
 var root_asset_node: HyAssetNode = null
@@ -72,26 +76,24 @@ var root_graph_node: CustomGraphNode = null
 var all_asset_nodes: Dictionary[String, HyAssetNode] = {}
 var asset_node_aux_data: Dictionary[String, HyAssetNode.AuxData] = {}
 
-var floating_an_tree_roots: Array[String] = []
-
 var gn_lookup: Dictionary[String, CustomGraphNode] = {}
 
 var raw_metadata: Dictionary = {}
 
 var is_loaded: = false
 
-var file_helper: AssetNodeFileHelper
+var file_helper: = AssetNodeFileHelper.new()
 var file_history_version: int = -10 
 
 func _ready() -> void:
-    serializer = CHANE_HyAssetNodeSerializer.new()
     serializer.name = "HyAssetNodeSerializer"
     add_child(serializer, true)
     undo_manager.set_editor(self)
 
-    file_helper = AssetNodeFileHelper.new()
+    fragment_store.name = "FragmentStore"
+    add_child(fragment_store, true)
+
     file_helper.name = "FileHelper"
-    file_helper.after_loaded.connect(on_after_file_loaded)
     file_helper.after_saved.connect(on_after_file_saved)
     add_child(file_helper, true)
 
@@ -120,9 +122,6 @@ func _ready() -> void:
 
 func is_different_from_file_version() -> bool:
     return undo_manager.undo_redo.get_version() != file_history_version
-
-func on_after_file_loaded() -> void:
-    undo_manager.clear()
 
 func on_after_file_saved() -> void:
     file_history_version = undo_manager.undo_redo.get_version()
@@ -371,7 +370,7 @@ func _register_asset_node(asset_node: HyAssetNode, aux_data: HyAssetNode.AuxData
     else:
         asset_node_aux_data[asset_node.an_node_id] = HyAssetNode.AuxData.new()
 
-func register_asset_nodes(asset_nodes: Array[HyAssetNode], aux_data: Array[HyAssetNode.AuxData]) -> void:
+func register_asset_nodes(asset_nodes: Array, aux_data: Array) -> void:
     for i in asset_nodes.size():
         _register_asset_node(asset_nodes[i], aux_data[i])
 
@@ -482,12 +481,29 @@ static func get_an_roots_within_set(asset_node_set: Variant, associated_aux: Dic
             root_ans.append(asset_node)
     return root_ans
 
-func clear_loaded_graph() -> void:
-    focused_graph.clear_graph()
+## Get rid of all fragments not referenced after the current edited asset is unloaded and history is cleared, this is just the current copied fragment
+func cleanup_fragment_store() -> void:
+    var referenced_fragment_ids: Array[String] = []
+    if current_copied_fragment:
+        referenced_fragment_ids.append(current_copied_fragment.fragment_id)
+    fragment_store.remove_all_except(referenced_fragment_ids)
 
+## Unload the current edited asset and (hopefully) cleanup all allocated objects that would now be orphaned
+func clear_loaded_graph() -> void:
+    # If the current fragment is a cut fragment, first turn it into a copy
+    invalidate_current_cut_fragment()
+    cleanup_fragment_store()
+
+    # Removes and frees all currently added GraphElement Nodes
+    for graph in graphs:
+        graph.clear_graph()
+    
+    # Frees orphaned Godot Nodes that were kept around to be re-added or un-deleted
+    undo_manager.clear()
+
+    # Asset Nodes and Aux Data are RefCounted
     all_asset_nodes.clear()
     asset_node_aux_data.clear()
-    floating_an_tree_roots.clear()
     root_asset_node = null
     raw_metadata.clear()
     is_loaded = false
@@ -609,6 +625,12 @@ func get_gn_main_asset_node(graph_node: CustomGraphNode) -> HyAssetNode:
     if not graph_node or not graph_node.get_meta("hy_asset_node_id", ""):
         return null
     return all_asset_nodes.get(graph_node.get_meta("hy_asset_node_id", ""), null)
+
+func get_gn_input_port_asset_node(graph_node: CustomGraphNode, port_idx: int) -> HyAssetNode:
+    if not gn_is_special(graph_node):
+        return get_gn_main_asset_node(graph_node)
+    var current_connections: Dictionary[String, Array] = graph_node.get_all_connections()
+    return graph_node.get_parent_an_for_connection(current_connections.keys()[port_idx])
 
 func _get_splice_left_conn(old_conn_info: Dictionary, insert_gn: CustomGraphNode) -> Dictionary:
     return {
@@ -816,15 +838,29 @@ func add_graph_nodes_for_new_asset_node_trees(graph: CHANE_AssetNodeGraphEdit, t
         prints("new ans to gns count: %s" % new_ans_to_gns.size())
         all_new_ges.append_array(new_ans_to_gns.values())
 
-        all_new_connections.append_array(get_new_gn_connections(new_ans_to_gns[tree_root_node], new_ans_to_gns))
+        all_new_connections.append_array(get_new_gn_tree_connections(new_ans_to_gns[tree_root_node], new_ans_to_gns))
     
     prints("all new ges count: %s" % all_new_ges.size())
     graph_undo_step.add_new_graph_elements(all_new_ges, all_new_connections, [])
     if is_new_step:
         undo_manager.commit_current_undo_step()
     return all_new_ges
+
+func get_connections_for_newly_added_ges(new_ges: Array[GraphElement], new_asset_nodes: Array[HyAssetNode]) -> Array[Dictionary]:
+    var connection_infos: Array[Dictionary] = []
+    var ans_to_gns: Dictionary[HyAssetNode, CustomGraphNode] = {}
+    for new_gn in new_ges:
+        if not new_gn is CustomGraphNode:
+            continue
+        for owned_an in get_gn_own_asset_nodes(new_gn):
+            ans_to_gns[owned_an] = new_gn
+
+    var new_an_roots: = get_an_roots_within_registered_set(new_asset_nodes)
+    for an_root in new_an_roots:
+        connection_infos.append_array(get_new_gn_tree_connections(ans_to_gns[an_root], ans_to_gns))
+    return connection_infos
     
-func get_new_gn_connections(cur_gn: CustomGraphNode, ans_to_gns: Dictionary) -> Array[Dictionary]:
+func get_new_gn_tree_connections(cur_gn: CustomGraphNode, ans_to_gns: Dictionary) -> Array[Dictionary]:
     var connection_infos: Array[Dictionary] = []
     _get_new_gn_conn_recurse(cur_gn, ans_to_gns, connection_infos)
     return connection_infos
@@ -930,5 +966,137 @@ func get_duplicate_group_set(groups: Array) -> Array[GraphFrame]:
         group.name = graph_node_factory.new_graph_node_name("Group")
     return groups_copy
 
-func insert_fragment_into_graph(fragment: Fragment, graph: CHANE_AssetNodeGraphEdit, at_pos_offset: Vector2) -> void:
-    pass
+func get_fragment_by_id(fragment_id: String) -> Fragment:
+    return fragment_store.get_fragment_by_id(fragment_id)
+
+func paste_cur_copied_fragment_centered() -> void:
+    if not current_copied_fragment:
+        push_warning("No fragment to paste")
+        return
+    var focused_center: = focused_graph.get_center_pos_offset()
+    undo_manager.start_undo_step("Paste Nodes")
+    var is_new_step: = undo_manager.is_new_step
+
+    _paste_from_fragment_at(current_copied_fragment, focused_center, true)
+
+    if is_new_step:
+        undo_manager.commit_current_undo_step()
+
+func paste_cur_copied_fragment_at_pos(at_pos_offset: Vector2) -> void:
+    if not current_copied_fragment:
+        push_warning("No fragment to paste")
+        return
+    undo_manager.start_undo_step("Paste Nodes")
+    var is_new_step: = undo_manager.is_new_step
+
+    _paste_from_fragment_at(current_copied_fragment, at_pos_offset, true)
+    
+    if is_new_step:
+        undo_manager.commit_current_undo_step()
+
+func _paste_from_fragment_at(paste_from_fragment: Fragment, at_pos_offset: Vector2, with_snap: bool, into_graph: CHANE_AssetNodeGraphEdit = null) -> void:
+    var undo_step: = undo_manager.active_undo_step
+    if not into_graph:
+        into_graph = focused_graph
+    
+    # Unlike most undo actions, the paste is performed immediately before the undo step is committed
+    undo_step.paste_fragment(paste_from_fragment, into_graph, at_pos_offset, with_snap)
+
+func _actual_do_paste_from_fragment(fragment_id: String, at_pos_offset: Vector2, with_snap: bool, into_graph: CHANE_AssetNodeGraphEdit) -> Array[Array]:
+    var new_stuff: = _insert_fragment_into_graph(fragment_id, into_graph, at_pos_offset, with_snap)
+    return new_stuff
+
+func _actual_do_paste_from_fragments(fragment_infos: Array[Dictionary], into_graph: CHANE_AssetNodeGraphEdit) -> void:
+    for fragment_info in fragment_infos:
+        _actual_do_paste_from_fragment(fragment_info["fragment_id"], fragment_info["at_pos_offset"], fragment_info["with_snap"], into_graph)
+
+func _insert_fragment_into_graph(fragment_id: String, graph: CHANE_AssetNodeGraphEdit, at_pos_offset: Vector2, with_snap: bool, name_counter_start: int = -1) -> Array[Array]:
+    # this action is done before committing an undo step to get a list of the added stuff, so it needs to be skipped while calling do methods automatically during undo step commit
+    if undo_manager.undo_redo.is_committing_action():
+        return []
+    var fragment: = fragment_store.get_fragment_by_id(fragment_id)
+    var fragment_root: FragmentRoot
+    if name_counter_start >= 0:
+        fragment_root = fragment.get_consistent_named_gd_nodes("FrGE", name_counter_start)
+    else:
+        fragment_root = fragment.get_gd_nodes_copy()
+    var all_fragment_ans: Array = fragment_root.all_asset_nodes.values()
+    register_asset_nodes(all_fragment_ans, fragment_root.asset_node_aux_data.values())
+    var new_graph_elements: Array[GraphElement] = []
+    var new_groups: Array[GraphFrame] = []
+    for child in fragment_root.get_children():
+        if not child is GraphElement:
+            continue
+        child.position_offset += at_pos_offset
+        new_graph_elements.append(child)
+        if child is GraphFrame:
+            new_groups.append(child)
+    graph.add_graph_element_children(new_graph_elements, with_snap)
+    graph.add_nodes_inside_to_groups(new_groups, new_graph_elements, false)
+    var new_group_relations: = graph.get_groups_cur_relations(new_groups)
+    var new_conections: = get_connections_for_newly_added_ges(new_graph_elements, all_fragment_ans)
+    return [new_graph_elements, new_groups, all_fragment_ans, new_group_relations, new_conections]
+
+# As soon as a cut fragment is pasted replace it with a non-cut fragment that rolls new asset node IDs every paste
+func invalidate_cut_fragments(fragment_ids: Array[String]) -> void:
+    var cur_copied_id: = current_copied_fragment.fragment_id
+    if cur_copied_id in fragment_ids:
+        invalidate_current_cut_fragment()
+
+func invalidate_current_cut_fragment() -> void:
+    if not current_copied_fragment or not current_copied_fragment.is_cut_fragment:
+        return
+    var as_non_cut_fragment: = Fragment.new_duplicate_fragment(current_copied_fragment)
+    fragment_store.register_fragment(as_non_cut_fragment)
+    current_copied_fragment = as_non_cut_fragment
+
+func delete_graph_elements_with_undo(ges_to_remove: Array[GraphElement], from_graph: CHANE_AssetNodeGraphEdit, action_name: String = "Delete Nodes") -> void:
+    var undo_step: = undo_manager.start_or_continue_undo_step(action_name)
+    #undo_step.delete_graph_elements(ges_to_remove, self)
+    undo_step.cut_graph_elements_into_fragment(ges_to_remove, from_graph)
+    undo_manager.commit_if_new()
+
+func _delete_graph_elements_ans_if_not_committing(ges_to_remove: Array[GraphElement], from_graph: CHANE_AssetNodeGraphEdit) -> void:
+    if undo_manager.undo_redo.is_committing_action():
+        return
+    var included_asset_nodes: = get_included_asset_nodes_for_ges(ges_to_remove)
+    remove_asset_nodes(included_asset_nodes)
+
+func get_selected_ges() -> Array[GraphElement]:
+    return focused_graph.get_selected_ges()
+
+func reserve_global_counter_names(num_names: int) -> int:
+    var counter_starts_at: = graph_node_factory.global_gn_counter + 1
+    graph_node_factory.global_gn_counter += num_names
+    return counter_starts_at
+
+func get_an_connection_info(graph: CHANE_AssetNodeGraphEdit, graph_conn_info: Dictionary) -> Dictionary:
+    var output_from_gn: = graph.get_node(NodePath(graph_conn_info["to_node"])) as CustomGraphNode
+    var output_from_an: = get_gn_main_asset_node(output_from_gn)
+    
+    var output_to_gn: = graph.get_node(NodePath(graph_conn_info["from_node"])) as CustomGraphNode
+    var output_to_an: = get_gn_input_port_asset_node(output_to_gn, graph_conn_info["from_port"])
+    var output_to_conn_name: String = get_gn_modified_connections(output_to_gn, output_to_an).keys()[graph_conn_info["from_port"]]
+    return {
+        "parent_node": output_to_an.an_node_id,
+        "child_node": output_from_an.an_node_id,
+        "connection_name": output_to_conn_name,
+    }
+
+func get_hanging_ge_connections(ges: Array[GraphElement], graph: CHANE_AssetNodeGraphEdit) -> Array[Dictionary]:
+    return graph.get_external_connections_for_ges(ges)
+
+func get_hanging_an_connections_for_ges(ges: Array[GraphElement], graph: CHANE_AssetNodeGraphEdit) -> Array[Dictionary]:
+    var graph_conn_infos: Array[Dictionary] = graph.get_external_connections_for_ges(ges)
+    var ge_names: Array = ges.map(func(ge): return ge.name)
+    
+    var hanging_an_connections: Array[Dictionary] = []
+    for graph_conn_info in graph_conn_infos:
+        var an_connection_info: = get_an_connection_info(graph, graph_conn_info)
+        if graph_conn_info["from_node"] in ge_names:
+            an_connection_info["parent_node"] = ""
+            an_connection_info["connection_name"] = ""
+        else:
+            an_connection_info["child_node"] = ""
+        hanging_an_connections.append(an_connection_info)
+    return hanging_an_connections

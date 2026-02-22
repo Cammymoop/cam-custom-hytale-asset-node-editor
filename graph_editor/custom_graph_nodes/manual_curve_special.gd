@@ -113,6 +113,9 @@ func get_all_nodes_on_connection(_conn_name: String) -> Array[HyAssetNode]:
     var conn_nodes: Array[HyAssetNode] = []
     return conn_nodes
 
+func get_parent_an_for_connection(_conn_name: String) -> HyAssetNode:
+    return asset_node
+
 # end REQUIRED METHODS FOR SPECIAL GRAPH NODES::
 
 func get_excluded_connection_names() -> Array[String]:
