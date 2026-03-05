@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.4
+### Fixes:
+- Fixed extra connections showing up when loading a file while another file was loaded.
+
 ## 0.4.3
 ### Improvements:
 - Window title now shows the current file name

@@ -580,6 +580,7 @@ func clear_graph() -> void:
     potential_top_level_graph_nodes.clear()
     cleanup_graph_elements()
     cancel_connection_cut()
+    clear_connections()
 
 func cleanup_graph_elements() -> void:
     for child in get_children():
